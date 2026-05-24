@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { differenceInDays } from "date-fns";
 import { DashboardClient } from "./dashboard-client";
+import { Prisma } from "@prisma/client";
 
 // Force dynamic rendering
 export const dynamic = "force-dynamic";
@@ -18,10 +19,11 @@ async function getDashboardData() {
     inProductionItems,
     recentTransactions,
     urgentItemsRaw,
-    productionItems,
+    productionByStatusRaw,
+    statusItems,
     monthlyRevenue,
     monthlyExpenses,
-    last6MonthsLedger,
+    monthlyLedgerRaw,
   ] = await Promise.all([
     prisma.transaction.count({ where: { rowStatus: true } }),
     prisma.customer.count({ where: { rowStatus: true } }),
@@ -38,9 +40,23 @@ async function getDashboardData() {
       where: { rowStatus: true },
       take: 15,
       orderBy: { createdAt: "desc" },
-      include: {
-        customer: true,
-        statusTransaction: true,
+      select: {
+        id: true,
+        transactionCode: true,
+        totalAmount: true,
+        paymentStatus: true,
+        transactionDate: true,
+        customer: {
+          select: {
+            name: true,
+          },
+        },
+        statusTransaction: {
+          select: {
+            name: true,
+            colorSlug: true,
+          },
+        },
       },
     }),
     prisma.transactionItem.findMany({
@@ -49,20 +65,51 @@ async function getDashboardData() {
         targetDate: { not: null },
         statusItem: { code: { notIn: ["OK", "DIAMBIL"] } },
       },
-      include: {
-        transaction: { include: { customer: true } },
-        item: true,
-        statusItem: true,
+      select: {
+        id: true,
+        targetDate: true,
+        transaction: {
+          select: {
+            id: true,
+            transactionCode: true,
+            customer: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        item: {
+          select: {
+            name: true,
+          },
+        },
+        statusItem: {
+          select: {
+            name: true,
+            colorSlug: true,
+          },
+        },
       },
       orderBy: { targetDate: "asc" },
       take: 50,
     }),
-    prisma.transactionItem.findMany({
+    prisma.transactionItem.groupBy({
+      by: ["statusItemId"],
       where: {
         rowStatus: true,
         statusItem: { code: { notIn: ["OK", "DIAMBIL"] } },
       },
-      include: { statusItem: true },
+      _count: { _all: true },
+    }),
+    prisma.statusItem.findMany({
+      where: { rowStatus: true },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        colorSlug: true,
+      },
     }),
     prisma.cashLedger.aggregate({
       where: { type: "Debit", entryDate: { gte: startOfMonth, lt: endOfMonth } },
@@ -72,29 +119,30 @@ async function getDashboardData() {
       where: { type: "Credit", entryDate: { gte: startOfMonth, lt: endOfMonth } },
       _sum: { amount: true },
     }),
-    prisma.cashLedger.findMany({
-      where: {
-        entryDate: {
-          gte: new Date(now.getFullYear(), now.getMonth() - 5, 1),
-          lt: endOfMonth,
-        },
-      },
-      select: { entryDate: true, type: true, amount: true },
-    }),
+    prisma.$queryRaw<Array<{ month: Date; type: string; total: Prisma.Decimal }>>`
+      SELECT
+        date_trunc('month', "entryDate") AS month,
+        "type",
+        SUM("amount") AS total
+      FROM "cash_ledger"
+      WHERE "entryDate" >= ${new Date(now.getFullYear(), now.getMonth() - 5, 1)}
+        AND "entryDate" < ${endOfMonth}
+      GROUP BY 1, 2
+    `,
   ]);
 
   // Build production by status
+  const statusLookup = new Map(statusItems.map((status) => [status.id, status]));
   const statusCounts: Record<string, { name: string; count: number; color: string }> = {};
-  for (const item of productionItems) {
-    const key = item.statusItem?.code || "UNKNOWN";
-    if (!statusCounts[key]) {
-      statusCounts[key] = {
-        name: item.statusItem?.name || key,
-        count: 0,
-        color: item.statusItem?.colorSlug || "gray",
-      };
-    }
-    statusCounts[key].count++;
+  for (const statusGroup of productionByStatusRaw) {
+    if (!statusGroup.statusItemId) continue;
+    const status = statusLookup.get(statusGroup.statusItemId);
+    const key = status?.code || `STATUS_${statusGroup.statusItemId}`;
+    statusCounts[key] = {
+      name: status?.name || key,
+      count: statusGroup._count._all,
+      color: status?.colorSlug || "gray",
+    };
   }
 
   // Build revenue by month (last 6 months)
@@ -109,14 +157,14 @@ async function getDashboardData() {
       expenses: 0,
     };
   }
-  for (const entry of last6MonthsLedger) {
-    const d = new Date(entry.entryDate);
+  for (const entry of monthlyLedgerRaw) {
+    const d = new Date(entry.month);
     const key = `${d.getFullYear()}-${d.getMonth()}`;
     if (revenueByMonth[key]) {
       if (entry.type === "Debit") {
-        revenueByMonth[key].revenue += Number(entry.amount);
+        revenueByMonth[key].revenue += Number(entry.total);
       } else {
-        revenueByMonth[key].expenses += Number(entry.amount);
+        revenueByMonth[key].expenses += Number(entry.total);
       }
     }
   }

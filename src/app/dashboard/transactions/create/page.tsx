@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { TransactionCreateForm } from "./transaction-create-form";
+import { unstable_cache } from "next/cache";
 
-async function getFormData() {
+const getFormData = unstable_cache(async () => {
   const [customersRaw, itemsRaw, fabricsRaw, statusTransactions, statusItems, paymentTypes, wallets] = await Promise.all([
     prisma.customer.findMany({
       where: { rowStatus: true },
@@ -54,7 +55,7 @@ async function getFormData() {
   }));
 
   return { customers, items, fabrics, statusTransactions, statusItems, paymentTypes, wallets };
-}
+}, ["transaction-create-form-data"], { revalidate: 120, tags: ["transaction-create-form-data"] });
 
 export default async function TransactionCreatePage() {
   const formData = await getFormData();

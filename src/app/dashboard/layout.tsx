@@ -2,9 +2,31 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/shared/sidebar";
 import { prisma } from "@/lib/prisma";
+import { unstable_cache } from "next/cache";
 
 // Force dynamic rendering to prevent database access during build
 export const dynamic = 'force-dynamic';
+
+function getRoleMenus(roleId: number) {
+  return unstable_cache(
+    async () => {
+      return prisma.roleMenuMapping.findMany({
+        where: { roleId },
+        include: {
+          menu: true,
+        },
+        orderBy: {
+          menu: { orderNo: "asc" },
+        },
+      });
+    },
+    [`role-menus-${roleId}`],
+    {
+      revalidate: 300,
+      tags: [`role-menus-${roleId}`],
+    }
+  )();
+}
 
 export default async function DashboardLayout({
   children,
@@ -20,15 +42,7 @@ export default async function DashboardLayout({
   const userRoleId = (session.user as any).roleId as number;
 
   // Fetch allowed menus for this role
-  const roleMenus = await prisma.roleMenuMapping.findMany({
-    where: { roleId: userRoleId },
-    include: {
-      menu: true,
-    },
-    orderBy: {
-      menu: { orderNo: "asc" },
-    },
-  });
+  const roleMenus = await getRoleMenus(userRoleId);
 
   // Filter active menus - include both leaf menus and parent menus that have children
   const allMenus = roleMenus

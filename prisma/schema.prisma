@@ -185,6 +185,7 @@ model RoleMenuMapping {
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
   menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
 
+  @@index([roleId, menuId])
   @@map("role_menu_mappings")
 }
 
@@ -483,6 +484,10 @@ model Transaction {
   items             TransactionItem[]
   payments          Payment[]
 
+  @@index([rowStatus, createdAt])
+  @@index([rowStatus, paymentStatus])
+  @@index([customerId])
+  @@index([statusTransactionId])
   @@map("transactions")
 }
 
@@ -520,6 +525,9 @@ model TransactionItem {
   deliveryItems      DeliveryItem[]
   workerLogs         WorkerLog[]
 
+  @@index([rowStatus, statusItemId])
+  @@index([targetDate])
+  @@index([transactionId])
   @@map("transaction_items")
 }
 
@@ -696,6 +704,9 @@ model CashLedger {
   payroll       Payroll? @relation(fields: [payrollId], references: [id], onDelete: SetNull)
   createdByUser User     @relation("CashLedgerCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
 
+  @@index([entryDate])
+  @@index([type, entryDate])
+  @@index([walletId, entryDate])
   @@map("cash_ledger")
 }
 
