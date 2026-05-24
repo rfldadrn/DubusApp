@@ -1,6 +1,8 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
+const ADMIN_ROLES = new Set(["SuperAdmin", "Admin"]);
+
 export default auth(async (req) => {
   const { pathname } = req.nextUrl;
   const session = req.auth;
@@ -21,6 +23,14 @@ export default auth(async (req) => {
   // Redirect to login if not authenticated
   if (!session) {
     return NextResponse.redirect(new URL("/login", req.url));
+  }
+
+  // Restrict settings area to admin roles only
+  if (pathname.startsWith("/dashboard/settings")) {
+    const role = (session.user as { role?: string })?.role;
+    if (!role || !ADMIN_ROLES.has(role)) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
   }
 
   return NextResponse.next();

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const searchParams = request.nextUrl.searchParams;
     const customerId = searchParams.get("customerId");
     const itemId = searchParams.get("itemId");
@@ -24,7 +30,12 @@ export async function GET(request: NextRequest) {
         itemSizeCustomers: {
           where: { rowStatus: true },
           include: {
-            itemSize: true,
+            itemSize: {
+              select: {
+                name: true,
+                sortOrder: true,
+              },
+            },
           },
           orderBy: {
             itemSize: {

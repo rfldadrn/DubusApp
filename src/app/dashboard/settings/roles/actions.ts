@@ -1,14 +1,14 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { requireAdminSession } from "@/lib/authorization";
 
 export async function updateRolePermissions(roleId: number, menuIds: number[]) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return { success: false, error: "Unauthorized" };
+    const authResult = await requireAdminSession();
+    if (!authResult.ok) {
+      return { success: false, error: authResult.error };
     }
 
     // Delete existing permissions
@@ -36,6 +36,11 @@ export async function updateRolePermissions(roleId: number, menuIds: number[]) {
 
 export async function getRolePermissions(roleId: number) {
   try {
+    const authResult = await requireAdminSession();
+    if (!authResult.ok) {
+      return { success: false, error: authResult.error };
+    }
+
     const permissions = await prisma.roleMenuMapping.findMany({
       where: { roleId },
       include: {
@@ -52,6 +57,11 @@ export async function getRolePermissions(roleId: number) {
 
 export async function getMenus() {
   try {
+    const authResult = await requireAdminSession();
+    if (!authResult.ok) {
+      return { success: false, error: authResult.error };
+    }
+
     const menus = await prisma.menu.findMany({
       where: { rowStatus: true },
       orderBy: { orderNo: "asc" },

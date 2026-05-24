@@ -1,9 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import bcrypt from "bcryptjs";
+import { requireAdminSession } from "@/lib/authorization";
 
 type UserInput = {
   fullName: string;
@@ -14,9 +14,9 @@ type UserInput = {
 
 export async function createUser(data: UserInput) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return { success: false, error: "Unauthorized" };
+    const authResult = await requireAdminSession();
+    if (!authResult.ok) {
+      return { success: false, error: authResult.error };
     }
 
     // Check if username already exists
@@ -40,8 +40,19 @@ export async function createUser(data: UserInput) {
         roleId: data.roleId,
         rowStatus: true,
       },
-      include: {
-        role: true,
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        roleId: true,
+        rowStatus: true,
+        createdAt: true,
+        role: {
+          select: {
+            id: true,
+            roleName: true,
+          },
+        },
       },
     });
 
@@ -55,9 +66,9 @@ export async function createUser(data: UserInput) {
 
 export async function updateUser(userId: number, data: Partial<UserInput>) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return { success: false, error: "Unauthorized" };
+    const authResult = await requireAdminSession();
+    if (!authResult.ok) {
+      return { success: false, error: authResult.error };
     }
 
     const updateData: any = {
@@ -88,8 +99,19 @@ export async function updateUser(userId: number, data: Partial<UserInput>) {
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: updateData,
-      include: {
-        role: true,
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        roleId: true,
+        rowStatus: true,
+        createdAt: true,
+        role: {
+          select: {
+            id: true,
+            roleName: true,
+          },
+        },
       },
     });
 
@@ -103,9 +125,9 @@ export async function updateUser(userId: number, data: Partial<UserInput>) {
 
 export async function deleteUser(userId: number) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return { success: false, error: "Unauthorized" };
+    const authResult = await requireAdminSession();
+    if (!authResult.ok) {
+      return { success: false, error: authResult.error };
     }
 
     // Soft delete
@@ -124,6 +146,11 @@ export async function deleteUser(userId: number) {
 
 export async function getRoles() {
   try {
+    const authResult = await requireAdminSession();
+    if (!authResult.ok) {
+      return { success: false, error: authResult.error };
+    }
+
     const roles = await prisma.role.findMany({
       where: { rowStatus: true },
       orderBy: { roleName: "asc" },

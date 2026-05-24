@@ -12,8 +12,16 @@ async function getSettingsData() {
   const [users, roles, menus] = await Promise.all([
     prisma.user.findMany({
       where: { rowStatus: true },
-      include: {
-        role: true,
+      select: {
+        id: true,
+        fullName: true,
+        username: true,
+        createdAt: true,
+        role: {
+          select: {
+            roleName: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
     }),
