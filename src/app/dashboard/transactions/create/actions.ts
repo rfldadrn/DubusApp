@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 
 type ItemChargeInput = {
   label: string;
@@ -46,6 +47,27 @@ function getInitialPaymentStatus(totalAmount: number, paidAmount: number) {
   return "Partial" as const;
 }
 
+function isTransactionIdUniqueError(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code !== "P2002") return false;
+
+  const target = (error.meta as { target?: unknown } | undefined)?.target;
+  if (Array.isArray(target)) return target.includes("id");
+  if (typeof target === "string") return target.includes("id");
+  return false;
+}
+
+async function syncTransactionIdSequence() {
+  // Keep sequence aligned with actual max(id) to prevent duplicate key on auto-increment.
+  await prisma.$executeRawUnsafe(`
+    SELECT setval(
+      pg_get_serial_sequence('"transactions"', 'id'),
+      COALESCE((SELECT MAX(id) FROM "transactions"), 0) + 1,
+      false
+    )
+  `);
+}
+
 export async function createTransaction(data: TransactionInput) {
   try {
     const session = await auth();
@@ -83,39 +105,49 @@ export async function createTransaction(data: TransactionInput) {
     const paidAmount = data.payment?.amount || 0;
     const initialPaymentStatus = getInitialPaymentStatus(totalAmount, paidAmount);
 
-    const transaction = await prisma.transaction.create({
-      data: {
-        transactionCode,
-        customerId: data.customerId,
-        transactionDate: data.transactionDate,
-        completionDate: data.completionDate,
-        totalAmount,
-        paymentStatus: initialPaymentStatus,
-        statusTransactionId: data.statusTransactionId,
-        note: data.note,
-        createdBy: Number(session.user.id),
-        items: {
-          create: data.items.map((item) => ({
-            itemId: item.itemId,
-            fabricSource: item.fabricSource,
-            fabricId: item.fabricSource === "Store" ? item.fabricId : null,
-            fabricPrice: item.fabricPrice || null,
-            fabricMeters: item.fabricMeters || null,
-            modelDescription: item.modelDescription,
-            sewingPrice: item.sewingPrice,
-            statusItemId: item.statusItemId,
-            headerSizeCustomerId: item.headerSizeCustomerId,
-            charges: {
-              create: item.charges.map((charge) => ({
-                label: charge.label,
-                amount: charge.amount,
-                note: charge.note || null,
-              })),
-            },
-          })),
-        },
+    const createPayload = {
+      transactionCode,
+      customerId: data.customerId,
+      transactionDate: data.transactionDate,
+      completionDate: data.completionDate,
+      totalAmount,
+      paymentStatus: initialPaymentStatus,
+      statusTransactionId: data.statusTransactionId,
+      note: data.note,
+      createdBy: Number(session.user.id),
+      items: {
+        create: data.items.map((item) => ({
+          itemId: item.itemId,
+          fabricSource: item.fabricSource,
+          fabricId: item.fabricSource === "Store" ? item.fabricId : null,
+          fabricPrice: item.fabricPrice || null,
+          fabricMeters: item.fabricMeters || null,
+          modelDescription: item.modelDescription,
+          sewingPrice: item.sewingPrice,
+          statusItemId: item.statusItemId,
+          headerSizeCustomerId: item.headerSizeCustomerId,
+          charges: {
+            create: item.charges.map((charge) => ({
+              label: charge.label,
+              amount: charge.amount,
+              note: charge.note || null,
+            })),
+          },
+        })),
       },
-    });
+    };
+
+    let transaction;
+    try {
+      transaction = await prisma.transaction.create({ data: createPayload });
+    } catch (error) {
+      if (!isTransactionIdUniqueError(error)) {
+        throw error;
+      }
+
+      await syncTransactionIdSequence();
+      transaction = await prisma.transaction.create({ data: createPayload });
+    }
 
     // Create payment record if payment info provided
     if (data.payment) {
