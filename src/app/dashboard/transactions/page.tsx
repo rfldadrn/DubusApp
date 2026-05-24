@@ -4,17 +4,31 @@ import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { TransactionTable } from "./transaction-table";
+import { unstable_cache } from "next/cache";
 
-async function getTransactions() {
+const getTransactions = unstable_cache(async () => {
   const transactions = await prisma.transaction.findMany({
     where: { rowStatus: true },
-    include: {
-      customer: true,
-      statusTransaction: true,
-      items: {
-        include: {
-          item: true,
-          statusItem: true,
+    select: {
+      id: true,
+      transactionCode: true,
+      transactionDate: true,
+      totalAmount: true,
+      paymentStatus: true,
+      type: true,
+      customer: {
+        select: {
+          name: true,
+        },
+      },
+      statusTransaction: {
+        select: {
+          name: true,
+        },
+      },
+      _count: {
+        select: {
+          items: true,
         },
       },
     },
@@ -26,13 +40,13 @@ async function getTransactions() {
     transactionCode: t.transactionCode,
     customerName: t.customer.name,
     transactionDate: t.transactionDate.toISOString(),
-    itemCount: t.items.length,
+    itemCount: t._count.items,
     totalAmount: Number(t.totalAmount),
     paymentStatus: t.paymentStatus,
     statusName: t.statusTransaction.name,
     type: t.type,
   }));
-}
+}, ["transactions-page-data"], { revalidate: 20, tags: ["transactions-page-data"] });
 
 export default async function TransactionsPage() {
   const transactions = await getTransactions();

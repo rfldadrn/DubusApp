@@ -3,34 +3,109 @@ import { CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { differenceInDays } from "date-fns";
 import { ProductionTable } from "./production-table";
+import { unstable_cache } from "next/cache";
 
-async function getProductionData() {
-  const transactionItems = await prisma.transactionItem.findMany({
+const getProductionData = unstable_cache(async () => {
+  const now = new Date();
+  const urgentBefore = new Date();
+  urgentBefore.setDate(urgentBefore.getDate() + 3);
+
+  const [transactionItems, statusItems, employees, inProgressCount, completedCount, urgentCount] = await Promise.all([
+    prisma.transactionItem.findMany({
     where: { rowStatus: true },
-    include: {
+    select: {
+      id: true,
+      targetDate: true,
       transaction: {
-        include: {
-          customer: true,
-          agencyProject: { include: { agency: true } },
+        select: {
+          id: true,
+          transactionCode: true,
+          customer: {
+            select: {
+              name: true,
+            },
+          },
+          agencyProject: {
+            select: {
+              agency: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
         },
       },
-      item: true,
-      statusItem: true,
-      assignedTailor: true,
+      item: {
+        select: {
+          name: true,
+        },
+      },
+      statusItem: {
+        select: {
+          code: true,
+          name: true,
+          sequence: true,
+          colorSlug: true,
+        },
+      },
+      assignedTailor: {
+        select: {
+          name: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
-  });
+  }),
 
-  const statusItems = await prisma.statusItem.findMany({
+  prisma.statusItem.findMany({
     where: { rowStatus: true },
     orderBy: { sequence: "asc" },
-  });
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      sequence: true,
+      colorSlug: true,
+    },
+  }),
 
-  const employees = await prisma.employee.findMany({
+  prisma.employee.findMany({
     where: { rowStatus: true },
-    include: { employeeType: true },
+    select: {
+      id: true,
+      name: true,
+      employeeType: {
+        select: {
+          name: true,
+        },
+      },
+    },
     orderBy: { name: "asc" },
-  });
+  }),
+
+  prisma.transactionItem.count({
+    where: {
+      rowStatus: true,
+      statusItem: { code: { notIn: ["OK", "DIAMBIL"] } },
+    },
+  }),
+
+  prisma.transactionItem.count({
+    where: {
+      rowStatus: true,
+      statusItem: { code: { in: ["OK", "DIAMBIL"] } },
+    },
+  }),
+
+  prisma.transactionItem.count({
+    where: {
+      rowStatus: true,
+      targetDate: { not: null, lte: urgentBefore },
+      statusItem: { code: { notIn: ["OK", "DIAMBIL"] } },
+    },
+  }),
+  ]);
 
   const maxSequence = Math.max(...statusItems.map((s) => s.sequence), 1);
 
@@ -50,10 +125,8 @@ async function getProductionData() {
     progress: Math.round(((ti.statusItem?.sequence ?? 0) / maxSequence) * 100),
   }));
 
-  const inProgress = rows.filter((r) => r.statusName !== "Selesai" && r.statusName !== "Sudah Diambil");
-  const completed = rows.filter((r) => r.statusName === "Selesai" || r.statusName === "Sudah Diambil");
   const urgent = rows.filter(
-    (r) => r.targetDate && differenceInDays(new Date(r.targetDate), new Date()) < 3 && r.statusName !== "Selesai"
+    (r) => r.targetDate && differenceInDays(new Date(r.targetDate), now) < 3 && r.statusCode !== "OK" && r.statusCode !== "DIAMBIL"
   );
 
   return {
@@ -71,11 +144,11 @@ async function getProductionData() {
       typeName: e.employeeType?.name || "Umum",
     })),
     agencies: Array.from(new Set(rows.map((r) => r.agencyName))).sort((a, b) => a.localeCompare(b)),
-    inProgressCount: inProgress.length,
-    completedCount: completed.length,
-    urgentCount: urgent.length,
+    inProgressCount,
+    completedCount,
+    urgentCount: Math.max(urgentCount, urgent.length),
   };
-}
+}, ["production-page-data"], { revalidate: 20, tags: ["production-page-data"] });
 
 export default async function ProductionPage() {
   const data = await getProductionData();

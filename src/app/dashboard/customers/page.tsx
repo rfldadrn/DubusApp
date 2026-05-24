@@ -5,14 +5,30 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { CustomerTable } from "./customer-table";
 import { CustomersImportDialog } from "./customers-import-dialog";
+import { unstable_cache } from "next/cache";
 
-async function getCustomers() {
+const getCustomers = unstable_cache(async () => {
   const customers = await prisma.customer.findMany({
     where: { rowStatus: true },
-    include: {
-      transactions: { where: { rowStatus: true } },
-      sizeHeaders: true,
-      agency: true,
+    select: {
+      id: true,
+      name: true,
+      phoneNumber: true,
+      gender: true,
+      createdAt: true,
+      agency: {
+        select: {
+          name: true,
+        },
+      },
+      _count: {
+        select: {
+          transactions: {
+            where: { rowStatus: true },
+          },
+          sizeHeaders: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -23,11 +39,11 @@ async function getCustomers() {
     phoneNumber: c.phoneNumber || "",
     gender: c.gender || "N/A",
     agencyName: c.agency?.name || "",
-    transactionCount: c.transactions.length,
-    sizeCount: c.sizeHeaders.length,
+    transactionCount: c._count.transactions,
+    sizeCount: c._count.sizeHeaders,
     createdAt: c.createdAt.toISOString(),
   }));
-}
+}, ["customers-page-data"], { revalidate: 30, tags: ["customers-page-data"] });
 
 export default async function CustomersPage() {
   const customers = await getCustomers();

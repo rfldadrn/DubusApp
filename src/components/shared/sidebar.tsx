@@ -130,6 +130,7 @@ function MenuItemComponent({ item, pathname, depth = 0 }: { item: MenuItem; path
   return (
     <Link
       href={item.href}
+      prefetch
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-lg transition-colors",
         isActive
