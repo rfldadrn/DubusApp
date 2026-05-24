@@ -1,0 +1,719 @@
+// ============================================================
+// PRISMA SCHEMA — Aplikasi Toko Jahit
+// Database : PostgreSQL (GCP Cloud SQL)
+// Updated  : 2026-05
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Gender {
+  Laki_laki @map("Laki-laki")
+  Perempuan
+}
+
+enum GenderTarget {
+  Pria
+  Wanita
+  Unisex
+}
+
+enum FabricSource {
+  Customer
+  Store
+}
+
+enum TransactionType {
+  Regular
+  Agency
+}
+
+enum PaymentStatus {
+  Unpaid
+  Partial
+  Paid
+}
+
+enum WalletType {
+  Cash
+  QRIS
+  BankAccount
+  Other
+}
+
+enum IroningType {
+  Internal
+  External
+}
+
+enum FoldType {
+  Folded
+  Hanged
+}
+
+enum DeliveryStatus {
+  Pending
+  PartialDelivered
+  FullyDelivered
+}
+
+enum AgencyStatus {
+  Negotiation
+  Active
+  Completed
+  Cancelled
+}
+
+enum WorkerRole {
+  Tailor
+  Cutter
+}
+
+enum CashEntryType {
+  Debit
+  Credit
+}
+
+// ============================================================
+// MASTER STATUS (configurable dari UI)
+// Admin bisa tambah/edit status tanpa deploy ulang
+// ============================================================
+
+// Status per item dalam pipeline produksi
+// Seed: BARU, POTONG, JAHIT, PSKC, BORDIR, GOSOK, PERMAK, PENDING, OK, DIAMBIL, BU
+model StatusItem {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(10)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  colorSlug   String?  @db.VarChar(100)
+  iconSlug    String?  @db.VarChar(100)
+  sequence    Int      @default(0)
+  rowStatus   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactionItems TransactionItem[]
+
+  @@map("status_items")
+}
+
+// Status per transaksi (header order)
+// Seed: NEW, PROSES, OK, SELESAI, BB (belum bayar), BTL (batal), PENDING
+model StatusTransaction {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique @db.VarChar(10)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  colorSlug   String?  @db.VarChar(100)
+  iconSlug    String?  @db.VarChar(100)
+  sequence    Int      @default(0)
+  rowStatus   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  transactions Transaction[]
+
+  @@map("status_transactions")
+}
+
+// ============================================================
+// SEQUENCE — nomor order atomic, tidak collision
+// Format: YYYYMM + lastNumber (misal: 202505 + 0051 = 2025050051)
+// ============================================================
+
+model Sequence {
+  id         Int      @id @default(autoincrement())
+  key        String   @unique @db.VarChar(50)
+  lastNumber Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  @@map("sequences")
+}
+
+// ============================================================
+// AUTH & USER MANAGEMENT
+// ============================================================
+
+model Role {
+  id        Int      @id @default(autoincrement())
+  roleName  String   @db.VarChar(100)
+  rowStatus Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users            User[]
+  roleMenuMappings RoleMenuMapping[]
+
+  @@map("roles")
+}
+
+model Menu {
+  id        Int      @id @default(autoincrement())
+  menuName  String   @db.VarChar(100)
+  menuUrl   String?  @db.VarChar(255)
+  menuIcon  String?  @db.VarChar(50)
+  menuSlug  String?  @db.VarChar(100)
+  parentId  Int      @default(0)
+  isMenu    Boolean  @default(false)
+  orderNo   Int      @default(0)
+  rowStatus Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roleMenuMappings RoleMenuMapping[]
+
+  @@map("menus")
+}
+
+model RoleMenuMapping {
+  id        Int      @id @default(autoincrement())
+  roleId    Int
+  menuId    Int
+  createdAt DateTime @default(now())
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  menu Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+
+  @@map("role_menu_mappings")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  fullName  String   @db.VarChar(255)
+  username  String   @unique @db.VarChar(100)
+  password  String   @db.VarChar(255)
+  roleId    Int
+  rowStatus Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  sizeHeadersCreated    HeaderSizeCustomer[]
+  transactionsCreated   Transaction[]
+  productionLogsUpdated ProductionLog[]
+  ironingLogsHandled    IroningLog[]
+  deliveriesHandled     Delivery[]
+  paymentsReceived      Payment[]
+  payrollsProcessed     Payroll[]         @relation("PayrollPaidBy")
+  cashLedgersCreated    CashLedger[]      @relation("CashLedgerCreatedBy")
+  auditLogs             AuditLog[]
+  agenciesCreated       Agency[]
+
+  @@map("users")
+}
+
+// ============================================================
+// EMPLOYEE
+// ============================================================
+
+model EmployeeType {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  rowStatus   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees Employee[]
+
+  @@map("employee_types")
+}
+
+model Employee {
+  id             Int       @id @default(autoincrement())
+  name           String    @db.VarChar(100)
+  address        String?   @db.VarChar(255)
+  phoneNumber    String?   @db.VarChar(20)
+  email          String?   @db.VarChar(100)
+  gender         Gender?
+  joinDate       DateTime?
+  employeeTypeId Int?
+  avatar         String?   @db.VarChar(255)
+  rowStatus      Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  employeeType  EmployeeType?     @relation(fields: [employeeTypeId], references: [id], onDelete: SetNull)
+  assignedItems TransactionItem[]
+  workerLogs    WorkerLog[]
+  payrolls      Payroll[]
+
+  @@map("employees")
+}
+
+// ============================================================
+// MASTER DATA
+// ============================================================
+
+model PaymentType {
+  id              Int      @id @default(autoincrement())
+  code            String   @unique @db.VarChar(15)
+  name            String   @db.VarChar(100)
+  description     String?  @db.VarChar(255)
+  defaultWalletId Int?
+  rowStatus       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  defaultWallet Wallet?   @relation(fields: [defaultWalletId], references: [id], onDelete: SetNull)
+  payments      Payment[]
+
+  @@map("payment_types")
+}
+
+// Jenis pakaian: Kemeja, Celana, Jas, PDH, dll
+// customerPrice = harga jual ke pelanggan
+// employeePrice = ongkos jahit internal (margin & gaji karyawan)
+model Item {
+  id            Int          @id @default(autoincrement())
+  code          String       @unique @db.VarChar(10)
+  name          String       @db.VarChar(150)
+  description   String?      @db.Text
+  category      String?      @db.VarChar(100)
+  genderTarget  GenderTarget @default(Unisex)
+  customerPrice Decimal      @db.Decimal(10, 2)
+  employeePrice Decimal      @db.Decimal(10, 2)
+  rowStatus     Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  itemSizes           ItemSize[]
+  headerSizeCustomers HeaderSizeCustomer[]
+  transactionItems    TransactionItem[]
+
+  @@map("items")
+}
+
+// Field ukuran per jenis pakaian
+// isStandard  = field bawaan sistem, tidak bisa dihapus
+// isMandatory = wajib diisi saat input ukuran
+model ItemSize {
+  id          Int     @id @default(autoincrement())
+  itemId      Int
+  name        String  @db.VarChar(100)
+  isMandatory Boolean @default(false)
+  isStandard  Boolean @default(true)
+  sortOrder   Int     @default(0)
+  rowStatus   Boolean @default(true)
+
+  item              Item               @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemSizeCustomers ItemSizeCustomer[]
+
+  @@map("item_sizes")
+}
+
+// Katalog kain / bahan toko (opsional — bisa pilih dari sini atau ketik bebas)
+model Fabric {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(150)
+  fabricType    String   @db.VarChar(100)
+  pricePerMeter Decimal  @db.Decimal(10, 2)
+  stockMeters   Decimal  @default(0) @db.Decimal(10, 2)
+  rowStatus     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactionItems TransactionItem[]
+
+  @@map("fabrics")
+}
+
+// ============================================================
+// WALLET — sumber dana per channel
+// Saldo = openingBalance + SUM(debit) - SUM(credit) dari cash_ledger
+// ============================================================
+
+model Wallet {
+  id             Int        @id @default(autoincrement())
+  name           String     @db.VarChar(100)
+  walletType     WalletType
+  bankName       String?    @db.VarChar(100)
+  accountNumber  String?    @db.VarChar(50)
+  openingBalance Decimal    @default(0) @db.Decimal(18, 2)
+  openingDate    DateTime
+  isActive       Boolean    @default(true)
+  notes          String?    @db.VarChar(255)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  paymentTypes PaymentType[]
+  payments     Payment[]
+  cashLedgers  CashLedger[]
+
+  @@map("wallets")
+}
+
+// ============================================================
+// CUSTOMER & UKURAN
+// ============================================================
+
+model Customer {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)
+  phoneNumber String?  @db.VarChar(20)
+  gender      Gender?
+  agencyId    Int?
+  rowStatus   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  agency       Agency?              @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  sizeHeaders  HeaderSizeCustomer[]
+  transactions Transaction[]
+
+  @@map("customers")
+}
+
+// Snapshot ukuran pelanggan per jenis pakaian per waktu
+// note: "Ukuran 2025", "Ukuran setelah diet", dll
+model HeaderSizeCustomer {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  itemId     Int
+  note       String?  @db.Text
+  createdBy  Int
+  rowStatus  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  customer          Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  item              Item               @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  createdByUser     User               @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  itemSizeCustomers ItemSizeCustomer[]
+  transactionItems  TransactionItem[]
+
+  @@map("header_size_customers")
+}
+
+// Nilai per field ukuran
+model ItemSizeCustomer {
+  id                   Int     @id @default(autoincrement())
+  itemSizeId           Int
+  headerSizeCustomerId Int
+  size                 Decimal @db.Decimal(10, 2)
+  rowStatus            Boolean @default(true)
+
+  itemSize           ItemSize           @relation(fields: [itemSizeId], references: [id], onDelete: Cascade)
+  headerSizeCustomer HeaderSizeCustomer @relation(fields: [headerSizeCustomerId], references: [id], onDelete: Cascade)
+
+  @@map("item_size_customers")
+}
+
+// ============================================================
+// AGENCY / DINAS
+// ============================================================
+
+// Master instansi (permanent) — BKD, Dinas Pendidikan, dll
+model Agency {
+  id          Int      @id @default(autoincrement())
+  agencyCode  String   @unique @db.VarChar(10)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  rowStatus   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  createdBy   Int
+
+  createdByUser User            @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  projects      AgencyProject[]
+  customers     Customer[]
+
+  @@map("agencies")
+}
+
+// Kontrak / project per instansi per periode
+model AgencyProject {
+  id             Int          @id @default(autoincrement())
+  projectCode    String       @unique @db.VarChar(25)
+  agencyId       Int
+  name           String       @db.VarChar(100)
+  description    String?      @db.VarChar(255)
+  picName        String?      @db.VarChar(100)
+  picPhone       String?      @db.VarChar(20)
+  startDate      DateTime?
+  targetDate     DateTime?
+  contractStatus AgencyStatus @default(Active)
+  rowStatus      Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Restrict)
+  transactions Transaction[]
+  deliveries   Delivery[]
+
+  @@map("agency_projects")
+}
+
+// ============================================================
+// TRANSAKSI
+// ============================================================
+
+model Transaction {
+  id                  Int             @id @default(autoincrement())
+  transactionCode     String          @unique @db.VarChar(50)
+  customerId          Int
+  agencyProjectId     Int?
+  type                TransactionType @default(Regular)
+  transactionDate     DateTime
+  completionDate      DateTime?
+  totalAmount         Decimal         @db.Decimal(18, 2)
+  paymentStatus       PaymentStatus   @default(Unpaid)
+  statusTransactionId Int
+  note                String?         @db.VarChar(500)
+  createdBy           Int
+  rowStatus           Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  customer          Customer          @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  agencyProject     AgencyProject?    @relation(fields: [agencyProjectId], references: [id], onDelete: Restrict)
+  statusTransaction StatusTransaction @relation(fields: [statusTransactionId], references: [id], onDelete: Restrict)
+  createdByUser     User              @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  items             TransactionItem[]
+  payments          Payment[]
+
+  @@map("transactions")
+}
+
+// 1 baris = 1 pakaian = 1 status produksi (by design, tidak ada quantity field)
+// Total per item = sewingPrice + SUM(charges.amount)
+model TransactionItem {
+  id                   Int          @id @default(autoincrement())
+  transactionId        Int
+  itemId               Int
+  headerSizeCustomerId Int?
+  fabricSource         FabricSource @default(Store)
+  fabricId             Int?
+  fabricName           String?      @db.VarChar(150)
+  fabricPrice          Decimal?     @db.Decimal(10, 2)
+  fabricMeters         Decimal?     @db.Decimal(10, 2)
+  modelDescription     String?      @db.Text
+  modelImageUrl        String?      @db.VarChar(500)
+  sewingPrice          Decimal      @db.Decimal(10, 2)
+  targetDate           DateTime?
+  statusItemId         Int
+  assignedTailorId     Int?
+  rowStatus            Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  transaction        Transaction             @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  item               Item                    @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  headerSizeCustomer HeaderSizeCustomer?     @relation(fields: [headerSizeCustomerId], references: [id], onDelete: SetNull)
+  fabric             Fabric?                 @relation(fields: [fabricId], references: [id], onDelete: SetNull)
+  statusItem         StatusItem              @relation(fields: [statusItemId], references: [id], onDelete: Restrict)
+  assignedTailor     Employee?               @relation(fields: [assignedTailorId], references: [id], onDelete: SetNull)
+  charges            TransactionItemCharge[]
+  productionLogs     ProductionLog[]
+  ironingLog         IroningLog?
+  deliveryItems      DeliveryItem[]
+  workerLogs         WorkerLog[]
+
+  @@map("transaction_items")
+}
+
+// Biaya tambahan per item (kain, kancing, furing, dll)
+model TransactionItemCharge {
+  id                Int     @id @default(autoincrement())
+  transactionItemId Int
+  label             String  @db.VarChar(150)
+  amount            Decimal @db.Decimal(10, 2)
+  note              String? @db.VarChar(255)
+  rowStatus         Boolean @default(true)
+
+  transactionItem TransactionItem @relation(fields: [transactionItemId], references: [id], onDelete: Cascade)
+
+  @@map("transaction_item_charges")
+}
+
+// ============================================================
+// PEMBAYARAN
+// Total bayar : SUM(amount) WHERE transactionId = X
+// Sisa hutang : transaction.totalAmount - SUM(amount)
+// ============================================================
+
+model Payment {
+  id            Int      @id @default(autoincrement())
+  transactionId Int
+  amount        Decimal  @db.Decimal(18, 2)
+  balanceAfter  Decimal  @db.Decimal(18, 2)
+  paymentTypeId Int
+  walletId      Int
+  note          String?  @db.VarChar(500)
+  receivedBy    Int
+  paidAt        DateTime @default(now())
+
+  transaction     Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  paymentType     PaymentType @relation(fields: [paymentTypeId], references: [id], onDelete: Restrict)
+  wallet          Wallet      @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  receivedByUser  User        @relation(fields: [receivedBy], references: [id], onDelete: Restrict)
+  cashLedgerEntry CashLedger?
+
+  @@map("payments")
+}
+
+// ============================================================
+// PRODUKSI
+// ============================================================
+
+model ProductionLog {
+  id                Int      @id @default(autoincrement())
+  transactionItemId Int
+  fromStatusId      Int
+  toStatusId        Int
+  notes             String?  @db.VarChar(255)
+  updatedBy         Int
+  createdAt         DateTime @default(now())
+
+  transactionItem TransactionItem @relation(fields: [transactionItemId], references: [id], onDelete: Cascade)
+  updatedByUser   User            @relation(fields: [updatedBy], references: [id], onDelete: Restrict)
+
+  @@map("production_logs")
+}
+
+model IroningLog {
+  id                Int         @id @default(autoincrement())
+  transactionItemId Int         @unique
+  ironingType       IroningType
+  sentAt            DateTime    @default(now())
+  returnedAt        DateTime?
+  handledBy         Int
+  notes             String?     @db.VarChar(255)
+
+  transactionItem TransactionItem @relation(fields: [transactionItemId], references: [id], onDelete: Cascade)
+  handledByUser   User            @relation(fields: [handledBy], references: [id], onDelete: Restrict)
+
+  @@map("ironing_logs")
+}
+
+// ============================================================
+// PENGIRIMAN
+// ============================================================
+
+model Delivery {
+  id              Int            @id @default(autoincrement())
+  deliveryCode    String         @unique @db.VarChar(50)
+  agencyProjectId Int
+  deliveryDate    DateTime
+  destination     String         @db.VarChar(255)
+  recipientName   String?        @db.VarChar(100)
+  recipientPhone  String?        @db.VarChar(20)
+  status          DeliveryStatus @default(Pending)
+  notes           String?        @db.Text
+  handledBy       Int
+  createdAt       DateTime       @default(now())
+
+  agencyProject AgencyProject  @relation(fields: [agencyProjectId], references: [id], onDelete: Restrict)
+  handledByUser User           @relation(fields: [handledBy], references: [id], onDelete: Restrict)
+  items         DeliveryItem[]
+
+  @@map("deliveries")
+}
+
+model DeliveryItem {
+  id                Int      @id @default(autoincrement())
+  deliveryId        Int
+  transactionItemId Int
+  foldType          FoldType @default(Folded)
+  recipientNote     String?  @db.VarChar(150)
+
+  delivery        Delivery        @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  transactionItem TransactionItem @relation(fields: [transactionItemId], references: [id], onDelete: Restrict)
+
+  @@map("delivery_items")
+}
+
+// ============================================================
+// WORKER LOG & PAYROLL
+// ============================================================
+
+model WorkerLog {
+  id                Int        @id @default(autoincrement())
+  transactionItemId Int
+  employeeId        Int
+  role              WorkerRole
+  upah              Decimal    @db.Decimal(10, 2)
+  isPaid            Boolean    @default(false)
+  payrollId         Int?
+  createdAt         DateTime   @default(now())
+
+  transactionItem TransactionItem @relation(fields: [transactionItemId], references: [id], onDelete: Cascade)
+  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  payroll         Payroll?        @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+
+  @@map("worker_logs")
+}
+
+model Payroll {
+  id          Int      @id @default(autoincrement())
+  employeeId  Int
+  periodStart DateTime
+  periodEnd   DateTime
+  totalItems  Int
+  totalAmount Decimal  @db.Decimal(12, 2)
+  paidAt      DateTime @default(now())
+  paidBy      Int
+  notes       String?  @db.VarChar(255)
+
+  employee        Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  paidByUser      User        @relation("PayrollPaidBy", fields: [paidBy], references: [id], onDelete: Restrict)
+  workerLogs      WorkerLog[]
+  cashLedgerEntry CashLedger?
+
+  @@map("payrolls")
+}
+
+// ============================================================
+// BUKU KAS
+// Saldo per wallet = openingBalance + SUM(debit) - SUM(credit)
+// ============================================================
+
+model CashLedger {
+  id          Int           @id @default(autoincrement())
+  entryDate   DateTime      @default(now())
+  type        CashEntryType
+  category    String        @db.VarChar(100)
+  description String        @db.VarChar(500)
+  amount      Decimal       @db.Decimal(18, 2)
+  walletId    Int
+  paymentId   Int?          @unique
+  payrollId   Int?          @unique
+  createdBy   Int
+
+  wallet        Wallet   @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  payment       Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  payroll       Payroll? @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+  createdByUser User     @relation("CashLedgerCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@map("cash_ledger")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  action    String   @db.VarChar(50)
+  tableName String   @db.VarChar(100)
+  recordId  Int
+  oldValues Json?
+  newValues Json?
+  ipAddress String?  @db.VarChar(45)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("audit_logs")
+}
