@@ -145,6 +145,7 @@ export async function createTransaction(data: TransactionInput) {
         throw error;
       }
 
+      // Self-heal when DB sequence drifts after manual imports/seeds.
       await syncTransactionIdSequence();
       transaction = await prisma.transaction.create({ data: createPayload });
     }
