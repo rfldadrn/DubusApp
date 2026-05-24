@@ -88,10 +88,6 @@ export default function LoginPage() {
               {isLoading ? "Memproses..." : "Masuk"}
             </Button>
           </form>
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Default: superadmin / admin123</p>
-            <p>atau: admin / admin123</p>
-          </div>
         </CardContent>
       </Card>
     </div>
