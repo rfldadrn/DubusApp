@@ -132,7 +132,7 @@ export async function generateBonPDF(item: BonItem) {
   const modelImageDataUrl = await resolveModelImageDataUrl(item);
   try {
     const imageType = modelImageDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-    (doc as any).addImage(modelImageDataUrl, imageType, modelBoxX, modelBoxY + 2, modelBoxW, modelBoxH);
+    doc.addImage(modelImageDataUrl, imageType, modelBoxX, modelBoxY + 2, modelBoxW, modelBoxH);
   } catch {
     doc.setFontSize(7);
     doc.setFont("helvetica", "italic");
