@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { normalizePhoneNumber } from "@/lib/phone";
 
 type CustomerInput = {
@@ -21,6 +21,7 @@ export async function createCustomer(data: CustomerInput) {
     });
 
     revalidatePath("/dashboard/customers");
+    revalidateTag("transaction-create-form-data");
     return { success: true, data: customer };
   } catch (error) {
     console.error("Create customer error:", error);

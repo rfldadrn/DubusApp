@@ -47,6 +47,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   const router = useRouter();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   const [customerId, setCustomerId] = useState("");
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split("T")[0]);
@@ -788,12 +789,15 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.push("/dashboard/transactions")}
-          disabled={loading}
+          onClick={() => {
+            setRedirecting(true);
+            router.replace("/dashboard/transactions");
+          }}
+          disabled={loading || redirecting}
         >
           Batal
         </Button>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading || redirecting}>
           {loading ? "Menyimpan..." : "Simpan Transaksi"}
         </Button>
       </div>
@@ -818,14 +822,18 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
         onOpenChange={(open) => {
           setInvoiceDialogOpen(open);
           if (!open) {
-            router.push("/dashboard/transactions");
+            setRedirecting(true);
+            router.replace("/dashboard/transactions");
             router.refresh();
           }
         }}
         invoiceData={invoiceData}
       />
 
-      <LoadingOverlay visible={loading} message="Menyimpan transaksi..." />
+      <LoadingOverlay
+        visible={loading || redirecting}
+        message={redirecting ? "Mengarahkan ke daftar transaksi..." : "Menyimpan transaksi..."}
+      />
     </>
   );
 }

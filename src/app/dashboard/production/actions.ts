@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 interface StatusUpdateExtra {
   notes?: string;
@@ -211,6 +211,8 @@ export async function updateItemStatus(
 
     revalidatePath("/dashboard/production");
     revalidatePath("/dashboard/transactions");
+    revalidateTag("production-page-data");
+    revalidateTag("transactions-page-data");
     return { success: true };
   } catch (error) {
     console.error("Error updating item status:", error);
@@ -300,6 +302,8 @@ export async function bulkUpdateItemStatus(
 
     revalidatePath("/dashboard/production");
     revalidatePath("/dashboard/transactions");
+    revalidateTag("production-page-data");
+    revalidateTag("transactions-page-data");
 
     if (updated === 0) {
       return { success: false, error: "Tidak ada item yang berhasil diupdate" };
@@ -572,7 +576,15 @@ export async function getBonData(transactionItemId: number) {
           agencyProject: { include: { agency: true } },
         },
       },
-      item: true,
+      item: {
+        include: {
+          itemSizes: {
+            where: { rowStatus: true },
+            orderBy: { sortOrder: "asc" },
+            select: { name: true },
+          },
+        },
+      },
       fabric: true,
       charges: {
         where: { rowStatus: true },
@@ -590,10 +602,17 @@ export async function getBonData(transactionItemId: number) {
 
   if (!transactionItem) return null;
 
-  const sizes = transactionItem.headerSizeCustomer?.itemSizeCustomers?.map((isc) => ({
+  const measuredSizes = transactionItem.headerSizeCustomer?.itemSizeCustomers?.map((isc) => ({
     name: isc.itemSize.name,
-    value: Number(isc.size).toString(),
+    value: isc.size == null ? "" : String(isc.size),
   })) || [];
+
+  const fallbackSizes = transactionItem.item.itemSizes.map((size) => ({
+    name: size.name,
+    value: "",
+  }));
+
+  const sizes = measuredSizes.length > 0 ? measuredSizes : fallbackSizes;
 
   return {
     transactionCode: transactionItem.transaction.transactionCode,
@@ -601,6 +620,7 @@ export async function getBonData(transactionItemId: number) {
     agencyName: transactionItem.transaction.agencyProject?.agency?.name || undefined,
     itemName: transactionItem.item.name,
     modelDescription: transactionItem.modelDescription || undefined,
+    modelImageUrl: transactionItem.modelImageUrl || undefined,
     fabricSource: transactionItem.fabricSource,
     fabricName: transactionItem.fabric?.name || transactionItem.fabricName || undefined,
     fabricMeters: transactionItem.fabricMeters ? Number(transactionItem.fabricMeters).toString() : undefined,

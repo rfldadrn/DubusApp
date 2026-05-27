@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { normalizePhoneNumber } from "@/lib/phone";
 
 export async function getAgencies() {
@@ -163,6 +163,7 @@ export async function importCustomersToAgency(agencyId: number, customers: { nam
 
     revalidatePath("/dashboard/agency");
     revalidatePath("/dashboard/customers");
+    revalidateTag("transaction-create-form-data");
     return { success: true, count: created.count };
   } catch (error) {
     console.error("Error importing customers:", error);
@@ -265,6 +266,7 @@ export async function importAgencyCustomersFromExcel(
 
     revalidatePath("/dashboard/agency");
     revalidatePath("/dashboard/customers");
+    revalidateTag("transaction-create-form-data");
     return {
       success: true,
       imported: importedCount,

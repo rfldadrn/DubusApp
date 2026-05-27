@@ -1,18 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DataTable, Column, FilterOption } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye } from "lucide-react";
+import { Eye, Printer } from "lucide-react";
 import Link from "next/link";
 import { format, differenceInDays } from "date-fns";
 import { id } from "date-fns/locale";
 import { WorkflowTrackerDialog } from "@/components/shared/workflow-tracker-dialog";
 import { ProductionHistoryDialog } from "@/components/shared/production-history-dialog";
-import { bulkAssignWorkerByCurrentStatus, bulkUpdateItemStatus } from "./actions";
+import { bulkAssignWorkerByCurrentStatus, bulkUpdateItemStatus, getBonData } from "./actions";
 import { toast } from "sonner";
+import { printBon } from "@/lib/bon";
 
 interface ProductionRow {
   id: number;
@@ -39,10 +41,12 @@ interface StatusInfo {
 }
 
 export function ProductionTable({ data, allStatuses, employees = [], agencies = [] }: { data: ProductionRow[]; allStatuses: StatusInfo[]; employees?: { id: number; name: string; typeName: string }[]; agencies?: string[] }) {
+  const router = useRouter();
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkStatusId, setBulkStatusId] = useState<string>("");
   const [bulkEmployeeId, setBulkEmployeeId] = useState<string>("");
+  const [printingItemId, setPrintingItemId] = useState<number | null>(null);
 
   const selectedRows = useMemo(
     () => data.filter((row) => selectedItemIds.includes(row.id)),
@@ -109,7 +113,7 @@ export function ProductionTable({ data, allStatuses, employees = [], agencies = 
         toast.success(result.message || "Berhasil bulk update");
         setSelectedItemIds([]);
         setBulkStatusId("");
-        window.location.reload();
+        router.refresh();
       } else {
         toast.error(result.error || "Gagal bulk update");
       }
@@ -152,7 +156,7 @@ export function ProductionTable({ data, allStatuses, employees = [], agencies = 
       if (result.success) {
         toast.success(result.message || "Berhasil bulk assign tukang");
         setSelectedItemIds([]);
-        window.location.reload();
+        router.refresh();
       } else {
         toast.error(result.error || "Gagal bulk assign tukang");
       }
@@ -160,6 +164,24 @@ export function ProductionTable({ data, allStatuses, employees = [], agencies = 
       toast.error("Terjadi kesalahan saat bulk assign tukang");
     } finally {
       setBulkLoading(false);
+    }
+  };
+
+  const handlePrintBon = async (transactionItemId: number) => {
+    setPrintingItemId(transactionItemId);
+    try {
+      const bonData = await getBonData(transactionItemId);
+      if (!bonData) {
+        toast.error("Data bon tidak ditemukan");
+        return;
+      }
+
+      await printBon(bonData);
+      toast.success("Bon berhasil dicetak");
+    } catch {
+      toast.error("Gagal mencetak bon");
+    } finally {
+      setPrintingItemId(null);
     }
   };
 
@@ -258,6 +280,15 @@ export function ProductionTable({ data, allStatuses, employees = [], agencies = 
         return (
           <div className="flex items-center justify-end gap-1">
             <ProductionHistoryDialog transactionItemId={row.id} itemName={row.itemName} employees={employees} />
+            <Button
+              variant="ghost"
+              size="sm"
+              title="Cetak Bon"
+              onClick={() => handlePrintBon(row.id)}
+              disabled={printingItemId === row.id}
+            >
+              <Printer className="h-4 w-4" />
+            </Button>
             <WorkflowTrackerDialog transactionItem={workflowDialogItem} allStatuses={mappedStatuses} employees={employees} />
             <Link href={`/dashboard/transactions/${row.transactionId}`}>
               <Button variant="ghost" size="sm"><Eye className="h-4 w-4" /></Button>

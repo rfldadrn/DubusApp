@@ -13,7 +13,6 @@ import { toast } from "sonner";
 import { getAgencies, createAgency, updateAgency, deleteAgency, createProject, importAgencyCustomersFromExcel } from "./actions";
 import { LoadingOverlay } from "@/components/shared/loading-overlay";
 import { format } from "date-fns";
-import * as XLSX from "xlsx";
 import Link from "next/link";
 
 type AgencyData = {
@@ -110,6 +109,8 @@ export function AgencyClient() {
     setImportResult(null);
     
     try {
+      const XLSX = await import("xlsx");
+
       // Read Excel file
       const data = await importFile.arrayBuffer();
       const workbook = XLSX.read(data);
@@ -154,7 +155,9 @@ export function AgencyClient() {
     }
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
+
     const template = [
       ["Nama", "Nomor Telepon", "Jenis Kelamin (L/P)"],
       ["Ahmad Fauzi", "081234567890", "L"],

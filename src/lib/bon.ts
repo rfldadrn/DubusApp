@@ -6,6 +6,7 @@ interface BonItem {
   agencyName?: string;
   itemName: string;
   modelDescription?: string;
+  modelImageUrl?: string;
   fabricSource?: "Customer" | "Store";
   fabricName?: string;
   fabricMeters?: string;
@@ -14,11 +15,67 @@ interface BonItem {
   sizes: { name: string; value: string }[];
 }
 
+function toDataUrlSvg(svg: string) {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function buildFallbackModelSvg(item: BonItem) {
+  const safeTitle = (item.itemName || "Model").replace(/[<>&]/g, "");
+  const safeDesc = (item.modelDescription || "").replace(/[<>&]/g, "").slice(0, 36);
+
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="420" viewBox="0 0 300 420">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="100%" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="300" height="420" fill="url(#bg)"/>
+  <rect x="18" y="18" width="264" height="384" rx="14" fill="#ffffff" stroke="#cbd5e1" stroke-width="2"/>
+  <circle cx="150" cy="116" r="34" fill="#e5e7eb" stroke="#9ca3af" stroke-width="2"/>
+  <path d="M90 286 L108 170 L130 156 L170 156 L192 170 L210 286" fill="#dbeafe" stroke="#60a5fa" stroke-width="3"/>
+  <line x1="150" y1="200" x2="150" y2="285" stroke="#60a5fa" stroke-width="3" stroke-dasharray="5 4"/>
+  <line x1="108" y1="208" x2="192" y2="208" stroke="#93c5fd" stroke-width="2"/>
+  <text x="150" y="330" font-size="17" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#0f172a">${safeTitle}</text>
+  <text x="150" y="352" font-size="12" font-family="Helvetica, Arial, sans-serif" text-anchor="middle" fill="#475569">${safeDesc || "Auto model preview"}</text>
+</svg>`;
+}
+
+async function imageUrlToDataUrl(imageUrl: string): Promise<string | null> {
+  try {
+    const response = await fetch(imageUrl);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Failed to read image"));
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function resolveModelImageDataUrl(item: BonItem): Promise<string> {
+  if (item.modelImageUrl?.startsWith("data:image/")) {
+    return item.modelImageUrl;
+  }
+
+  if (item.modelImageUrl) {
+    const fetched = await imageUrlToDataUrl(item.modelImageUrl);
+    if (fetched) return fetched;
+  }
+
+  return toDataUrlSvg(buildFallbackModelSvg(item));
+}
+
 /**
  * Generate a bon/ticket PDF (10cm x 15cm) for a single transaction item.
  * Layout: header with transaction code + customer, sizes listed vertically, notes at bottom.
  */
-export function generateBonPDF(item: BonItem) {
+export async function generateBonPDF(item: BonItem) {
   // 10cm x 15cm in mm = 100 x 150
   const doc = new jsPDF({ unit: "mm", format: [100, 150] });
 
@@ -58,21 +115,41 @@ export function generateBonPDF(item: BonItem) {
   doc.text(item.itemName, margin, y + 3);
   y += 7;
 
-  // Sizes - vertical list (full width)
+  // Sizes + model image area
+  const sizesColumnWidth = 50;
+  const modelGap = 3;
+  const modelBoxX = margin + sizesColumnWidth + modelGap;
+  const modelBoxW = pageW - margin - modelBoxX;
+  const modelBoxY = y;
+  const modelBoxH = 48;
+
   doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
   doc.text("UKURAN", margin, y + 3);
+  doc.text("MODEL", modelBoxX, y + 3);
   y += 5;
+
+  const modelImageDataUrl = await resolveModelImageDataUrl(item);
+  try {
+    const imageType = modelImageDataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
+    (doc as any).addImage(modelImageDataUrl, imageType, modelBoxX, modelBoxY + 2, modelBoxW, modelBoxH);
+  } catch {
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "italic");
+    doc.text("Preview gagal dimuat", modelBoxX + 2, modelBoxY + 8);
+  }
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   item.sizes.forEach((size) => {
     if (y < 135) {
       doc.text(`${size.name}:`, margin, y + 3);
-      doc.text(size.value || "___", margin + 35, y + 3);
+      doc.text(size.value || "___", margin + 28, y + 3);
       y += 4.5;
     }
   });
+
+  y = Math.max(y, modelBoxY + modelBoxH + 2);
 
   // Bottom section - execution context for worker
   y += 3;
@@ -122,8 +199,8 @@ export function generateBonPDF(item: BonItem) {
   return doc;
 }
 
-export function printBon(item: BonItem) {
-  const doc = generateBonPDF(item);
+export async function printBon(item: BonItem) {
+  const doc = await generateBonPDF(item);
   const blob = doc.output("blob");
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank");

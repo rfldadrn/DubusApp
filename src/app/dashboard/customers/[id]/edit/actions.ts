@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { normalizePhoneNumber } from "@/lib/phone";
 
 type CustomerInput = {
@@ -26,6 +26,7 @@ export async function updateCustomer(id: number, data: CustomerInput) {
     revalidatePath("/dashboard/customers");
     revalidatePath(`/dashboard/customers/${id}`);
     revalidatePath("/dashboard/agency");
+    revalidateTag("transaction-create-form-data");
     return { success: true, data: customer };
   } catch (error) {
     console.error("Update customer error:", error);

@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { normalizePhoneNumber } from "@/lib/phone";
 import { Prisma } from "@prisma/client";
 
@@ -136,6 +136,7 @@ export async function importRegularCustomersFromExcel(rows: ImportRow[]) {
     }
 
     revalidatePath("/dashboard/customers");
+    revalidateTag("transaction-create-form-data");
 
     return {
       success: true,

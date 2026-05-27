@@ -114,12 +114,12 @@ export function WorkflowTrackerDialog({ transactionItem, allStatuses, employees 
     try {
       const bonData = await getBonData(transactionItem.id);
       if (bonData) {
-        printBon(bonData);
+        await printBon(bonData);
         toast.success("Bon berhasil dicetak");
       } else {
         toast.error("Data bon tidak ditemukan");
       }
-    } catch (error) {
+    } catch {
       toast.error("Gagal mencetak bon");
     } finally {
       setUpdating(false);

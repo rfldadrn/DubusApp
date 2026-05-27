@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 
 type ItemChargeInput = {
@@ -47,7 +47,7 @@ function getInitialPaymentStatus(totalAmount: number, paidAmount: number) {
   return "Partial" as const;
 }
 
-function isTransactionIdUniqueError(error: unknown) {
+function isIdUniqueError(error: unknown) {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (error.code !== "P2002") return false;
 
@@ -55,6 +55,66 @@ function isTransactionIdUniqueError(error: unknown) {
   if (Array.isArray(target)) return target.includes("id");
   if (typeof target === "string") return target.includes("id");
   return false;
+}
+
+function isTransactionCodeUniqueError(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code !== "P2002") return false;
+
+  const target = (error.meta as { target?: unknown } | undefined)?.target;
+  if (Array.isArray(target)) return target.includes("transactionCode");
+  if (typeof target === "string") return target.includes("transactionCode");
+  return false;
+}
+
+async function generateNextTransactionCode() {
+  const now = new Date();
+  const dateCode = now.toISOString().split("T")[0].replace(/-/g, "");
+  const sequenceKey = `transaction-code-${dateCode}`;
+
+  return prisma.$transaction(async (tx) => {
+    let sequence = await tx.sequence.findUnique({
+      where: { key: sequenceKey },
+      select: { lastNumber: true },
+    });
+
+    if (!sequence) {
+      const latestToday = await tx.transaction.findFirst({
+        where: {
+          transactionCode: {
+            startsWith: `TRX${dateCode}`,
+          },
+        },
+        select: { transactionCode: true },
+        orderBy: { transactionCode: "desc" },
+      });
+
+      const latestNumber = latestToday?.transactionCode
+        ? Number(latestToday.transactionCode.slice(-4)) || 0
+        : 0;
+
+      try {
+        await tx.sequence.create({
+          data: {
+            key: sequenceKey,
+            lastNumber: latestNumber,
+          },
+        });
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+          throw error;
+        }
+      }
+    }
+
+    const updated = await tx.sequence.update({
+      where: { key: sequenceKey },
+      data: { lastNumber: { increment: 1 } },
+      select: { lastNumber: true },
+    });
+
+    return `TRX${dateCode}${String(updated.lastNumber).padStart(4, "0")}`;
+  });
 }
 
 async function syncTransactionIdSequence() {
@@ -68,6 +128,44 @@ async function syncTransactionIdSequence() {
   `);
 }
 
+async function syncTableIdSequence(tableName: "payments" | "cash_ledger") {
+  await prisma.$executeRawUnsafe(`
+    SELECT setval(
+      pg_get_serial_sequence('"${tableName}"', 'id'),
+      COALESCE((SELECT MAX(id) FROM "${tableName}"), 0) + 1,
+      false
+    )
+  `);
+}
+
+async function createTransactionWithLockedId(createPayload: any) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`LOCK TABLE "transactions" IN EXCLUSIVE MODE`);
+
+    const rows = await tx.$queryRawUnsafe<Array<{ next_id: number }>>(
+      `SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM "transactions"`
+    );
+    const nextId = Number(rows[0]?.next_id || 1);
+
+    const created = await tx.transaction.create({
+      data: {
+        ...createPayload,
+        id: nextId,
+      },
+    });
+
+    await tx.$executeRawUnsafe(`
+      SELECT setval(
+        pg_get_serial_sequence('"transactions"', 'id'),
+        ${nextId + 1},
+        false
+      )
+    `);
+
+    return created;
+  });
+}
+
 export async function createTransaction(data: TransactionInput) {
   try {
     const session = await auth();
@@ -75,18 +173,7 @@ export async function createTransaction(data: TransactionInput) {
       return { success: false, error: "Unauthorized" };
     }
 
-    // Generate transaction code
-    const today = new Date();
-    const dateCode = today.toISOString().split("T")[0].replace(/-/g, "");
-    const count = await prisma.transaction.count({
-      where: {
-        createdAt: {
-          gte: new Date(today.setHours(0, 0, 0, 0)),
-          lt: new Date(today.setHours(23, 59, 59, 999)),
-        },
-      },
-    });
-    const transactionCode = `TRX${dateCode}${String(count + 1).padStart(4, "0")}`;
+    let transactionCode = await generateNextTransactionCode();
 
     // Calculate total amount
     let totalAmount = 0;
@@ -138,43 +225,112 @@ export async function createTransaction(data: TransactionInput) {
     };
 
     let transaction;
-    try {
-      transaction = await prisma.transaction.create({ data: createPayload });
-    } catch (error) {
-      if (!isTransactionIdUniqueError(error)) {
+    let attempts = 0;
+    while (!transaction && attempts < 5) {
+      attempts += 1;
+
+      try {
+        createPayload.transactionCode = transactionCode;
+        transaction = await prisma.transaction.create({ data: createPayload });
+      } catch (error) {
+        if (isTransactionCodeUniqueError(error)) {
+          transactionCode = await generateNextTransactionCode();
+          continue;
+        }
+
+        if (isIdUniqueError(error)) {
+          // Self-heal when DB sequence drifts after manual imports/seeds.
+          await syncTransactionIdSequence();
+
+          try {
+            transaction = await prisma.transaction.create({ data: createPayload });
+            break;
+          } catch (retryError) {
+            if (!isIdUniqueError(retryError)) {
+              throw retryError;
+            }
+
+            // Last fallback for concurrent race: lock table and assign id deterministically.
+            transaction = await createTransactionWithLockedId(createPayload);
+            break;
+          }
+        }
+
         throw error;
       }
+    }
 
-      // Self-heal when DB sequence drifts after manual imports/seeds.
-      await syncTransactionIdSequence();
-      transaction = await prisma.transaction.create({ data: createPayload });
+    if (!transaction) {
+      return { success: false, error: "Gagal membuat transaksi: kode transaksi bentrok berulang" };
     }
 
     // Create payment record if payment info provided
     if (data.payment) {
-      const payment = await prisma.payment.create({
-        data: {
-          transactionId: transaction.id,
-          amount: data.payment.amount,
-          balanceAfter: totalAmount - data.payment.amount,
-          paymentTypeId: data.payment.paymentTypeId,
-          walletId: data.payment.walletId,
-          receivedBy: Number(session.user.id),
-          note: data.payment.note || "Uang muka / DP",
-        },
-      });
+      let payment;
 
-      await prisma.cashLedger.create({
-        data: {
-          type: "Debit",
-          category: "Pembayaran Pelanggan",
-          description: `Pembayaran ${transaction.transactionCode}`,
-          amount: data.payment.amount,
-          walletId: data.payment.walletId,
-          paymentId: payment.id,
-          createdBy: Number(session.user.id),
-        },
-      });
+      try {
+        payment = await prisma.payment.create({
+          data: {
+            transactionId: transaction.id,
+            amount: data.payment.amount,
+            balanceAfter: totalAmount - data.payment.amount,
+            paymentTypeId: data.payment.paymentTypeId,
+            walletId: data.payment.walletId,
+            receivedBy: Number(session.user.id),
+            note: data.payment.note || "Uang muka / DP",
+          },
+        });
+      } catch (error) {
+        if (!isIdUniqueError(error)) {
+          throw error;
+        }
+
+        await syncTableIdSequence("payments");
+
+        payment = await prisma.payment.create({
+          data: {
+            transactionId: transaction.id,
+            amount: data.payment.amount,
+            balanceAfter: totalAmount - data.payment.amount,
+            paymentTypeId: data.payment.paymentTypeId,
+            walletId: data.payment.walletId,
+            receivedBy: Number(session.user.id),
+            note: data.payment.note || "Uang muka / DP",
+          },
+        });
+      }
+
+      try {
+        await prisma.cashLedger.create({
+          data: {
+            type: "Debit",
+            category: "Pembayaran Pelanggan",
+            description: `Pembayaran ${transaction.transactionCode}`,
+            amount: data.payment.amount,
+            walletId: data.payment.walletId,
+            paymentId: payment.id,
+            createdBy: Number(session.user.id),
+          },
+        });
+      } catch (error) {
+        if (!isIdUniqueError(error)) {
+          throw error;
+        }
+
+        await syncTableIdSequence("cash_ledger");
+
+        await prisma.cashLedger.create({
+          data: {
+            type: "Debit",
+            category: "Pembayaran Pelanggan",
+            description: `Pembayaran ${transaction.transactionCode}`,
+            amount: data.payment.amount,
+            walletId: data.payment.walletId,
+            paymentId: payment.id,
+            createdBy: Number(session.user.id),
+          },
+        });
+      }
     }
 
     // Fetch complete transaction data for invoice
@@ -193,6 +349,9 @@ export async function createTransaction(data: TransactionInput) {
     });
 
     revalidatePath("/dashboard/transactions");
+    revalidatePath("/dashboard/production");
+    revalidateTag("transactions-page-data");
+    revalidateTag("production-page-data");
     return { 
       success: true, 
       data: {
@@ -226,7 +385,26 @@ export async function createTransaction(data: TransactionInput) {
       }
     };
   } catch (error) {
-    console.error("Create transaction error:", error);
-    return { success: false, error: "Failed to create transaction" };
+    console.error("Create transaction error detail:", {
+      message: error instanceof Error ? error.message : String(error),
+      prismaCode:
+        error instanceof Prisma.PrismaClientKnownRequestError
+          ? error.code
+          : undefined,
+      prismaMeta:
+        error instanceof Prisma.PrismaClientKnownRequestError
+          ? error.meta
+          : undefined,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
+    const detail = error instanceof Error ? error.message : "Unknown error";
+    return {
+      success: false,
+      error:
+        process.env.NODE_ENV === "development"
+          ? `Failed to create transaction: ${detail}`
+          : "Failed to create transaction",
+    };
   }
 }
