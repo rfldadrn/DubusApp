@@ -325,31 +325,33 @@ export function ProductionTable({ data, allStatuses, employees = [], agencies = 
           <span className="text-sm text-muted-foreground">{selectedCount} dipilih</span>
         </div>
 
-        <Select value={bulkStatusId} onValueChange={setBulkStatusId}>
-          <SelectTrigger className="w-[220px]">
-            <SelectValue placeholder="Pilih status tujuan" />
-          </SelectTrigger>
-          <SelectContent>
-            {allStatuses.map((status) => (
-              <SelectItem key={status.id} value={String(status.id)}>
-                {status.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center justify-end gap-2">
+          <Select value={bulkStatusId} onValueChange={setBulkStatusId}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Pilih status tujuan" />
+            </SelectTrigger>
+            <SelectContent>
+              {allStatuses.map((status) => (
+                <SelectItem key={status.id} value={String(status.id)}>
+                  {status.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Select value={bulkEmployeeId} onValueChange={setBulkEmployeeId}>
-          <SelectTrigger className="w-[240px]">
-            <SelectValue placeholder="Pilih tukang (opsional/required)" />
-          </SelectTrigger>
-          <SelectContent>
-            {employees.map((emp) => (
-              <SelectItem key={emp.id} value={String(emp.id)}>
-                {emp.name} ({emp.typeName})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <Select value={bulkEmployeeId} onValueChange={setBulkEmployeeId}>
+            <SelectTrigger className="w-[240px]">
+              <SelectValue placeholder="Pilih tukang (opsional/required)" />
+            </SelectTrigger>
+            <SelectContent>
+              {employees.map((emp) => (
+                <SelectItem key={emp.id} value={String(emp.id)}>
+                  {emp.name} ({emp.typeName})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div> 
 
         <Button
           size="sm"

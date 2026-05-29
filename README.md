@@ -153,6 +153,8 @@ npm run db:migrate       # Create migration
 npm run db:seed          # Seed initial data
 npm run db:studio        # Open Prisma Studio
 npm run db:reset         # Reset database
+npm run db:backup        # Backup database ke file lokal (.dump)
+npm run db:backup:gdrive # Backup database + upload ke Google Drive
 
 # Build & Production
 npm run build            # Build for production
@@ -160,6 +162,240 @@ npm run start            # Start production server
 npm run type-check       # TypeScript type checking
 npm run lint             # Run ESLint
 ```
+
+## Backup Database ke Google Drive
+
+Fitur ini membuat dump PostgreSQL (.dump), menyimpan ke folder lokal, lalu upload ke Google Drive.
+
+Penting: script membaca environment dari file `.env` (dan `.env.local` jika ada). File `.env.example` hanya template.
+
+### 1. Siapkan Service Account Google
+
+1. Buka Google Cloud Console, aktifkan Google Drive API.
+2. Buat Service Account dan generate key JSON.
+3. Simpan key JSON (misal: `./secrets/gdrive-service-account.json`).
+4. Jika upload ke folder tertentu, share folder Google Drive ke email service account (Editor).
+
+### 2. Atur Environment Variable
+
+Tambahkan di `.env`:
+
+```env
+DATABASE_URL="postgresql://postgres:password@localhost:5432/toko_jahit"
+DIRECT_URL="postgresql://postgres:password@localhost:5432/toko_jahit"
+
+BACKUP_DIR="backups"
+BACKUP_KEEP_DAYS="14"
+BACKUP_FILE_PREFIX="dubusapp_"
+PG_DUMP_PATH=""
+
+GDRIVE_SERVICE_ACCOUNT_FILE="./secrets/gdrive-service-account.json"
+GDRIVE_FOLDER_ID=""
+GDRIVE_KEEP_FILES="30"
+```
+
+Catatan credential (pilih satu):
+- `GDRIVE_SERVICE_ACCOUNT_FILE`
+- `GDRIVE_SERVICE_ACCOUNT_JSON`
+- `GDRIVE_SERVICE_ACCOUNT_BASE64`
+- atau OAuth user credential: `GDRIVE_OAUTH_CLIENT_ID`, `GDRIVE_OAUTH_CLIENT_SECRET`, `GDRIVE_OAUTH_REFRESH_TOKEN`
+- alternatif OAuth file: `GDRIVE_OAUTH_CLIENT_FILE` + `GDRIVE_OAUTH_REFRESH_TOKEN`
+
+Jika `pg_dump` belum ada di PATH, isi `PG_DUMP_PATH` dengan lokasi executable.
+
+Jika muncul error `Service Accounts do not have storage quota`:
+- Gunakan folder di Shared Drive dan set `GDRIVE_FOLDER_ID`, atau
+- Beralih ke OAuth user credentials agar upload memakai kuota akun Google Anda.
+
+### Generate OAuth Refresh Token (One-Time)
+
+1. Isi dulu di `.env`:
+
+```env
+GDRIVE_OAUTH_CLIENT_ID="..."
+GDRIVE_OAUTH_CLIENT_SECRET="..."
+GDRIVE_OAUTH_REDIRECT_URI="http://localhost"
+# atau langsung file OAuth dari Google Cloud
+GDRIVE_OAUTH_CLIENT_FILE="./cerdentials/client_secret_xxx.apps.googleusercontent.com.json"
+```
+
+2. Jalankan helper:
+
+```bash
+npm run db:gdrive:oauth-token
+```
+
+3. Buka URL yang ditampilkan, login akun Google Anda, lalu copy authorization code.
+4. Paste code ke terminal. Script akan menampilkan `GDRIVE_OAUTH_REFRESH_TOKEN`.
+5. Simpan token itu ke `.env`, lalu jalankan ulang:
+
+```bash
+npm run db:backup:gdrive
+```
+
+Jika muncul error `has not completed the Google verification process`:
+
+1. Buka Google Cloud Console -> APIs & Services -> OAuth consent screen.
+2. Set `Publishing status` ke `Testing` (bukan In production).
+3. Tambahkan email Anda di `Test users`.
+4. Di `.env`, gunakan scope minimal:
+
+```env
+GDRIVE_OAUTH_SCOPES="https://www.googleapis.com/auth/drive.file"
+```
+
+5. Generate ulang refresh token:
+
+```bash
+npm run db:gdrive:oauth-token
+```
+
+### 3. Jalankan Backup
+
+```bash
+npm run db:backup:gdrive
+```
+
+### 4. Jalankan Otomatis Harian (Windows Task Scheduler)
+
+Default task dijalankan setiap hari jam 01:00:
+
+```bash
+npm run db:backup:schedule
+```
+
+Jika ingin test command pendaftaran task tanpa benar-benar membuat task:
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/register-backup-task.ps1 -WhatIf
+```
+
+Jika ingin custom jam, contoh jam 02:30:
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/register-backup-task.ps1 -Time "02:30"
+```
+
+Hapus task scheduler:
+
+```bash
+npm run db:backup:unschedule
+```
+
+Output proses:
+- File backup lokal dibuat di folder `BACKUP_DIR`
+- File di-upload ke Google Drive
+- File lokal lama dibersihkan berdasarkan `BACKUP_KEEP_DAYS`
+- File lama di Drive dibersihkan berdasarkan `GDRIVE_KEEP_FILES` (jika `GDRIVE_FOLDER_ID` diisi)
+
+## Quick Guide Menjalankan Fitur Backup
+
+1. Copy `.env.example` ke `.env` lalu isi nilai koneksi database + credential Google Drive.
+2. Pastikan service account sudah diberi akses ke folder Drive tujuan.
+3. Coba manual dulu: `npm run db:backup:gdrive`.
+4. Jika sudah sukses, aktifkan scheduler: `npm run db:backup:schedule`.
+5. Cek log hasil scheduler di `logs/db-backup-gdrive.log`.
+
+## Mode Vercel Cron (Hobby 1x/hari)
+
+Jika aplikasi di-host di Vercel, gunakan cron bawaan Vercel untuk trigger harian.
+
+Penting:
+- Endpoint cron ada di `/api/cron/db-backup`.
+- Jadwal diset di `vercel.json`.
+- Vercel tidak ideal untuk menjalankan `pg_dump` langsung, jadi endpoint ini men-trigger backup runner lewat webhook (`BACKUP_WEBHOOK_URL`).
+
+### Konfigurasi
+
+1. Pastikan file `vercel.json` berisi cron:
+
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/db-backup",
+      "schedule": "0 1 * * *"
+    }
+  ]
+}
+```
+
+2. Tambahkan Environment Variables di Vercel Project:
+
+```env
+CRON_SECRET="random-secret"
+BACKUP_WEBHOOK_URL="https://your-backup-runner.example.com/backup"
+BACKUP_WEBHOOK_TOKEN="optional-webhook-token"
+```
+
+3. Backup runner adalah service yang menjalankan command:
+
+```bash
+npm run db:backup:gdrive
+```
+
+4. Deploy ke Vercel. Cron akan memanggil endpoint harian dengan `Authorization: Bearer <CRON_SECRET>`.
+
+### Test Manual Endpoint Cron
+
+```bash
+curl -X GET "https://your-domain.vercel.app/api/cron/db-backup" \
+  -H "Authorization: Bearer <CRON_SECRET>"
+```
+
+## Checklist Push ke Git
+
+Push file berikut:
+- source code dan script:
+  - `scripts/backup-to-gdrive.ts`
+  - `scripts/generate-gdrive-refresh-token.ts`
+  - `scripts/register-backup-task.ps1`
+  - `src/app/api/cron/db-backup/route.ts`
+  - `vercel.json`
+- konfigurasi project:
+  - `.gitignore`
+  - `.env.example`
+  - `README.md`
+  - `package.json`
+  - `package-lock.json`
+
+Jangan push:
+- `.env`
+- folder `cerdentials/`
+- folder `backups/`
+- folder `logs/`
+
+Catatan:
+- Jika ada file lain yang berubah tapi tidak terkait fitur backup (misalnya perubahan modul lain), commit terpisah supaya riwayat tetap bersih.
+
+## Yang Perlu Disediakan di Vercel
+
+Wajib untuk endpoint cron:
+- `CRON_SECRET`
+- `BACKUP_WEBHOOK_URL`
+- `BACKUP_WEBHOOK_TOKEN` (opsional)
+
+Untuk aplikasi utama (umum NextAuth + DB):
+- `DATABASE_URL`
+- `DIRECT_URL` (jika dipakai di server action/script)
+- `AUTH_SECRET`
+- `AUTH_URL`
+- `NEXT_PUBLIC_APP_NAME`
+- `NEXT_PUBLIC_APP_URL`
+
+Untuk backup runner (jika runner juga Anda deploy sendiri, bukan di Vercel app utama):
+- `DATABASE_URL` atau `DIRECT_URL`
+- `BACKUP_DIR`
+- `BACKUP_KEEP_DAYS`
+- `BACKUP_FILE_PREFIX`
+- `PG_DUMP_PATH` (jika pg_dump tidak ada di PATH)
+- `GDRIVE_FOLDER_ID` (direkomendasikan)
+- `GDRIVE_KEEP_FILES`
+- OAuth mode (direkomendasikan):
+  - `GDRIVE_OAUTH_CLIENT_FILE` atau pasangan `GDRIVE_OAUTH_CLIENT_ID` + `GDRIVE_OAUTH_CLIENT_SECRET`
+  - `GDRIVE_OAUTH_REFRESH_TOKEN`
+  - `GDRIVE_OAUTH_REDIRECT_URI`
+  - `GDRIVE_OAUTH_SCOPES`
 
 ## 🎨 UI Components
 

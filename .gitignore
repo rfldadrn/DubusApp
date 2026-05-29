@@ -38,3 +38,8 @@ next-env.d.ts
 
 # prisma
 prisma/migrations/migration_lock.toml
+
+# backup artifacts and secrets
+/backups/
+/logs/
+/cerdentials/
