@@ -73,7 +73,7 @@ async function generateNextTransactionCode() {
   const sequenceKey = `transaction-code-${dateCode}`;
 
   return prisma.$transaction(async (tx) => {
-    let sequence = await tx.sequence.findUnique({
+    const sequence = await tx.sequence.findUnique({
       where: { key: sequenceKey },
       select: { lastNumber: true },
     });
