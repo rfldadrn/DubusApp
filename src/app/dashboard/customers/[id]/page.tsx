@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { Pencil, ShoppingCart } from "lucide-react";
 
 async function getCustomer(id: string) {
   const customer = await prisma.customer.findUnique({
@@ -49,12 +49,20 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <h1 className="text-3xl font-bold tracking-tight">{customer.name}</h1>
           <p className="text-muted-foreground">Detail informasi pelanggan</p>
         </div>
-        <Link href={`/dashboard/customers/${customer.id}/edit`}>
-          <Button>
-            <Pencil className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/dashboard/customers/${customer.id}/edit`}>
+            <Button>
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit
+            </Button>
+          </Link>  
+          <Link href="/dashboard/transactions/create">
+            <Button>
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Order Baru
+            </Button>
+          </Link>
+        </div> 
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
