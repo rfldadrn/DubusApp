@@ -162,20 +162,23 @@ model PaymentType {
 }
 
 model Item {
-  id                  Int                  @id @default(autoincrement())
-  code                String               @unique @db.VarChar(10)
-  name                String               @db.VarChar(150)
-  description         String?
-  category            String?              @db.VarChar(100)
-  genderTarget        GenderTarget         @default(Unisex)
-  customerPrice       Decimal              @db.Decimal(10, 2)
-  employeePrice       Decimal              @db.Decimal(10, 2)
-  rowStatus           Boolean              @default(true)
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  headerSizeCustomers HeaderSizeCustomer[]
-  itemSizes           ItemSize[]
-  transactionItems    TransactionItem[]
+  id                                                       Int                  @id @default(autoincrement())
+  code                                                     String               @unique @db.VarChar(10)
+  name                                                     String               @db.VarChar(150)
+  description                                              String?
+  category                                                 String?              @db.VarChar(100)
+  genderTarget                                             GenderTarget         @default(Unisex)
+  customerPrice                                            Decimal              @db.Decimal(10, 2)
+  employeePrice                                            Decimal              @db.Decimal(10, 2)
+  rowStatus                                                Boolean              @default(true)
+  createdAt                                                DateTime             @default(now())
+  updatedAt                                                DateTime             @updatedAt
+  defaultDesignId                                          Int?
+  clothing_designs_clothing_designs_itemIdToitems          clothing_designs[]   @relation("clothing_designs_itemIdToitems")
+  headerSizeCustomers                                      HeaderSizeCustomer[]
+  itemSizes                                                ItemSize[]
+  clothing_designs_items_defaultDesignIdToclothing_designs clothing_designs?    @relation("items_defaultDesignIdToclothing_designs", fields: [defaultDesignId], references: [id])
+  transactionItems                                         TransactionItem[]
 
   @@map("items")
 }
@@ -240,6 +243,7 @@ model Customer {
   sizeHeaders  HeaderSizeCustomer[]
   transactions Transaction[]
 
+  @@index([rowStatus, createdAt(sort: Desc)])
   @@map("customers")
 }
 
@@ -306,6 +310,7 @@ model AgencyProject {
   deliveries     Delivery[]
   transactions   Transaction[]
 
+  @@index([rowStatus, agencyId])
   @@map("agency_projects")
 }
 
@@ -336,6 +341,7 @@ model Transaction {
   @@index([rowStatus, createdAt], map: "idx_transactions_rowstatus_createdat")
   @@index([rowStatus, paymentStatus], map: "idx_transactions_rowstatus_paymentstatus")
   @@index([statusTransactionId], map: "idx_transactions_statustransactionid")
+  @@index([agencyProjectId, rowStatus, createdAt(sort: Desc)])
   @@map("transactions")
 }
 
@@ -358,11 +364,14 @@ model TransactionItem {
   rowStatus            Boolean                 @default(true)
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
+  designId             Int?
+  useDefaultDesign     Boolean                 @default(true)
   deliveryItems        DeliveryItem[]
   ironingLog           IroningLog?
   productionLogs       ProductionLog[]
   charges              TransactionItemCharge[]
   assignedTailor       Employee?               @relation(fields: [assignedTailorId], references: [id])
+  clothing_designs     clothing_designs?       @relation(fields: [designId], references: [id])
   fabric               Fabric?                 @relation(fields: [fabricId], references: [id])
   headerSizeCustomer   HeaderSizeCustomer?     @relation(fields: [headerSizeCustomerId], references: [id])
   item                 Item                    @relation(fields: [itemId], references: [id])
@@ -373,6 +382,7 @@ model TransactionItem {
   @@index([rowStatus, statusItemId], map: "idx_transaction_items_rowstatus_statusitemid")
   @@index([targetDate], map: "idx_transaction_items_targetdate")
   @@index([transactionId], map: "idx_transaction_items_transactionid")
+  @@index([transactionId, rowStatus])
   @@map("transaction_items")
 }
 
@@ -404,6 +414,9 @@ model Payment {
   transaction     Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   wallet          Wallet      @relation(fields: [walletId], references: [id])
 
+  @@index([paidAt(sort: Desc)])
+  @@index([transactionId])
+  @@index([walletId, paidAt(sort: Desc)])
   @@map("payments")
 }
 
@@ -418,6 +431,8 @@ model ProductionLog {
   transactionItem   TransactionItem @relation(fields: [transactionItemId], references: [id], onDelete: Cascade)
   updatedByUser     User            @relation(fields: [updatedBy], references: [id])
 
+  @@index([createdAt(sort: Desc)])
+  @@index([transactionItemId])
   @@map("production_logs")
 }
 
@@ -451,6 +466,8 @@ model Delivery {
   handledByUser   User           @relation(fields: [handledBy], references: [id])
   items           DeliveryItem[]
 
+  @@index([agencyProjectId, deliveryDate(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
   @@map("deliveries")
 }
 
@@ -479,6 +496,7 @@ model WorkerLog {
   payroll           Payroll?        @relation(fields: [payrollId], references: [id])
   transactionItem   TransactionItem @relation(fields: [transactionItemId], references: [id], onDelete: Cascade)
 
+  @@index([employeeId, isPaid, createdAt(sort: Desc)])
   @@map("worker_logs")
 }
 
@@ -534,7 +552,29 @@ model AuditLog {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 
+  @@index([tableName, recordId])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+model clothing_designs {
+  id                                            Int               @id @default(autoincrement())
+  code                                          String            @unique @db.VarChar(50)
+  name                                          String            @db.VarChar(150)
+  description                                   String?           @db.VarChar(255)
+  category                                      String?           @db.VarChar(100)
+  genderTarget                                  GenderTarget      @default(Unisex)
+  svgContent                                    String
+  isBuiltin                                     Boolean           @default(false)
+  itemId                                        Int?
+  rowStatus                                     Boolean           @default(true)
+  createdAt                                     DateTime          @default(now())
+  updatedAt                                     DateTime
+  items_clothing_designs_itemIdToitems          Item?             @relation("clothing_designs_itemIdToitems", fields: [itemId], references: [id])
+  items_items_defaultDesignIdToclothing_designs Item[]            @relation("items_defaultDesignIdToclothing_designs")
+  transaction_items                             TransactionItem[]
+
+  @@index([rowStatus, itemId])
 }
 
 enum Gender {
