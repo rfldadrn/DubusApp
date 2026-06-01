@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Search, Ruler, ArrowRight, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
-import { getItemsForMeasurement, getAgencyProjects, createMeasurementTransaction } from "./actions";
+import { getItemsForMeasurement, getAgencyProjects, createMeasurementTransaction, addAgencyEmployee } from "./actions";
 import { LoadingOverlay } from "@/components/shared/loading-overlay";
 
 type Customer = {
@@ -63,6 +63,8 @@ export function AgencyDetailClient({ agency }: { agency: Agency }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [successDialog, setSuccessDialog] = useState<{ transactionCode: string; customerId: number } | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [employeeDialogOpen, setEmployeeDialogOpen] = useState(false);
+  const [employeeForm, setEmployeeForm] = useState({ name: "", phoneNumber: "", gender: "" });
 
   // Form state
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
@@ -249,6 +251,33 @@ export function AgencyDetailClient({ agency }: { agency: Agency }) {
     }
   };
 
+  const handleAddManualEmployee = async () => {
+    if (!employeeForm.name.trim()) {
+      toast.error("Nama pegawai wajib diisi");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await addAgencyEmployee(agency.id, {
+        name: employeeForm.name,
+        phoneNumber: employeeForm.phoneNumber || undefined,
+        gender: (employeeForm.gender as "Laki_laki" | "Perempuan") || undefined,
+      });
+
+      if (result.success) {
+        toast.success("Pegawai berhasil ditambahkan");
+        setEmployeeDialogOpen(false);
+        setEmployeeForm({ name: "", phoneNumber: "", gender: "" });
+        router.refresh();
+      } else {
+        toast.error(result.error || "Gagal menambah pegawai");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getTotalPersonalExtra = () => {
     return selectedItems.reduce((total, item) => {
       return total + Number(item.additionalCharge || 0) * item.quantity;
@@ -305,6 +334,9 @@ export function AgencyDetailClient({ agency }: { agency: Agency }) {
                 className="pl-10"
               />
             </div>
+            <Button variant="outline" onClick={() => setEmployeeDialogOpen(true)}>
+              + Pegawai Manual
+            </Button>
             <Badge variant="outline" className="px-3 py-2">
               <Users className="h-4 w-4 mr-2" />
               {filteredCustomers.length} Pegawai
@@ -312,6 +344,54 @@ export function AgencyDetailClient({ agency }: { agency: Agency }) {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={employeeDialogOpen} onOpenChange={setEmployeeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tambah Pegawai Manual</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label>Nama *</Label>
+              <Input
+                value={employeeForm.name}
+                onChange={(e) => setEmployeeForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Nama pegawai"
+              />
+            </div>
+            <div>
+              <Label>No. Telepon</Label>
+              <Input
+                value={employeeForm.phoneNumber}
+                onChange={(e) => setEmployeeForm((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                placeholder="08xxxxxxxxxx"
+              />
+            </div>
+            <div>
+              <Label>Gender</Label>
+              <Select
+                value={employeeForm.gender || "none"}
+                onValueChange={(v) => setEmployeeForm((prev) => ({ ...prev, gender: v === "none" ? "" : v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">-</SelectItem>
+                  <SelectItem value="Laki_laki">Laki-laki</SelectItem>
+                  <SelectItem value="Perempuan">Perempuan</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmployeeDialogOpen(false)}>
+              Batal
+            </Button>
+            <Button onClick={handleAddManualEmployee}>Simpan</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Employee List */}
       <Card>

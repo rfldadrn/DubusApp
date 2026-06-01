@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { PaymentCreateForm } from "./payment-create-form";
 
 async function getFormData() {
-  const [transactionsRaw, paymentTypes, wallets] = await Promise.all([
+  const [transactionsRaw, paymentTypes, walletsRaw] = await Promise.all([
     prisma.transaction.findMany({
       where: { rowStatus: true, paymentStatus: { not: "Paid" } },
       include: { 
@@ -17,17 +17,25 @@ async function getFormData() {
   ]);
 
   // Convert Decimal to number for client components
-  const transactions = transactionsRaw.map(t => ({
-    ...t,
-    totalAmount: Number(t.totalAmount),
-    payments: t.payments.map(p => ({
-      ...p,
-      amount: Number(p.amount),
-      balanceAfter: Number(p.balanceAfter),
-    }))
-  }));
+  // const transactions = transactionsRaw.map(t => ({
+  //   ...t,
+  //   totalAmount: Number(t.totalAmount),
+  //   payments: t.payments.map(p => ({
+  //     ...p,
+  //     amount: Number(p.amount),
+  //     balanceAfter: Number(p.balanceAfter),
+  //   }))
+  // }));
 
-  return { transactions, paymentTypes, wallets };
+  const rawData = {
+    transactions : transactionsRaw,
+    paymentTypes,
+    wallets : walletsRaw,
+  }
+
+  const safeFormData = JSON.parse(JSON.stringify(rawData));
+  return safeFormData;
+  // return { transactions, paymentTypes, wallets };
 }
 
 export default async function FinanceCreatePage() {

@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/shared/sidebar";
+import { SessionActivityTracker } from "@/components/shared/session-activity-tracker";
 import { prisma } from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
 
@@ -64,6 +65,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <SessionActivityTracker />
       <aside className="w-64 hidden md:block">
         <Sidebar menus={menus} />
       </aside>

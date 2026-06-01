@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { z } from "zod";
 
-type SizeValueInput = {
-  itemSizeId: number;
-  size: number;
-};
-
-type RequestBody = {
-  customerId: number;
-  itemId: number;
-  note?: string;
-  sizeValues: SizeValueInput[];
-};
+const bodySchema = z.object({
+  customerId: z.number().int().positive(),
+  itemId: z.number().int().positive(),
+  note: z.string().trim().max(2000).optional(),
+  sizeValues: z
+    .array(
+      z.object({
+        itemSizeId: z.number().int().positive(),
+        size: z.number().nonnegative().max(999),
+      })
+    )
+    .min(1, "Minimal 1 ukuran")
+    .max(100),
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,15 +25,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body: RequestBody = await request.json();
-    const { customerId, itemId, note, sizeValues } = body;
-
-    if (!customerId || !itemId || !sizeValues || sizeValues.length === 0) {
+    const raw = await request.json();
+    const parsed = bodySchema.safeParse(raw);
+    if (!parsed.success) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields" },
+        { success: false, error: parsed.error.issues[0]?.message || "Input tidak valid" },
         { status: 400 }
       );
     }
+    const { customerId, itemId, note, sizeValues } = parsed.data;
 
     // Create header size customer with size details
     const headerSize = await prisma.headerSizeCustomer.create({

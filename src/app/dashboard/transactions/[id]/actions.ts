@@ -13,6 +13,12 @@ export async function pickupItems(data: {
   itemIds: number[];
   pickerName?: string;
   notes?: string;
+  payment?: {
+    amount: number;
+    paymentTypeId: number;
+    walletId: number;
+    note?: string;
+  };
 }) {
   try {
     const session = await auth();
@@ -21,6 +27,42 @@ export async function pickupItems(data: {
 
     if (data.itemIds.length === 0) {
       return { success: false, error: "Pilih minimal 1 item untuk diambil" };
+    }
+
+    const transaction = await prisma.transaction.findUnique({
+      where: { id: data.transactionId },
+      include: {
+        payments: true,
+        statusTransaction: true,
+      },
+    });
+
+    if (!transaction) {
+      return { success: false, error: "Transaksi tidak ditemukan" };
+    }
+
+    const totalPaidBefore = transaction.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalAmount = Number(transaction.totalAmount);
+    const remainingBefore = Math.max(0, totalAmount - totalPaidBefore);
+
+    const paymentAmount = Number(data.payment?.amount || 0);
+    const shouldCreatePayment = paymentAmount > 0;
+
+    if (shouldCreatePayment) {
+      if (!data.payment?.paymentTypeId || !data.payment?.walletId) {
+        return { success: false, error: "Metode pembayaran dan wallet wajib diisi" };
+      }
+
+      if (paymentAmount <= 0) {
+        return { success: false, error: "Jumlah pembayaran harus lebih dari 0" };
+      }
+
+      if (paymentAmount > remainingBefore) {
+        return {
+          success: false,
+          error: `Jumlah melebihi sisa tagihan (sisa Rp ${remainingBefore.toLocaleString("id-ID")})`,
+        };
+      }
     }
 
     // Get DIAMBIL status
@@ -75,6 +117,36 @@ export async function pickupItems(data: {
       });
     }
 
+    if (shouldCreatePayment && data.payment) {
+      const newTotalPaid = totalPaidBefore + paymentAmount;
+      const balanceAfter = Math.max(0, totalAmount - newTotalPaid);
+
+      const createdPayment = await prisma.payment.create({
+        data: {
+          transactionId: data.transactionId,
+          amount: paymentAmount,
+          balanceAfter,
+          paymentTypeId: data.payment.paymentTypeId,
+          walletId: data.payment.walletId,
+          receivedBy: userId,
+          note: data.payment.note || "Pembayaran saat pengambilan pakaian",
+        },
+      });
+
+      await prisma.cashLedger.create({
+        data: {
+          entryDate: transaction.transactionDate,
+          type: "Debit",
+          category: "Pembayaran Pelanggan",
+          description: `Pembayaran ${transaction.transactionCode}`,
+          amount: paymentAmount,
+          walletId: data.payment.walletId,
+          paymentId: createdPayment.id,
+          createdBy: userId,
+        },
+      });
+    }
+
     // Check if ALL items in transaction are now DIAMBIL
     const allItems = await prisma.transactionItem.findMany({
       where: { transactionId: data.transactionId, rowStatus: true },
@@ -82,47 +154,49 @@ export async function pickupItems(data: {
     });
 
     const allPickedUp = allItems.every((item) => item.statusItem.code === "DIAMBIL");
+    const totalPaidAfter = totalPaidBefore + (shouldCreatePayment ? paymentAmount : 0);
+    const isPaidAfter = totalPaidAfter >= totalAmount;
+    const paymentStatus = isPaidAfter ? "Paid" : totalPaidAfter > 0 ? "Partial" : "Unpaid";
+
+    const updateTransactionData: {
+      paymentStatus: "Paid" | "Partial" | "Unpaid";
+      statusTransactionId?: number;
+      completionDate?: Date | null;
+    } = {
+      paymentStatus,
+    };
 
     if (allPickedUp) {
-      // Check payment status to determine transaction status
-      const transaction = await prisma.transaction.findUnique({
-        where: { id: data.transactionId },
-        include: { payments: true },
+      // SELESAI if paid, BB (Belum Bayar) if not
+      const statusCode = isPaidAfter ? "SELESAI" : "BB";
+      const transactionStatus = await prisma.statusTransaction.findFirst({
+        where: { code: statusCode },
       });
 
-      if (transaction) {
-        const totalPaid = transaction.payments.reduce(
-          (sum, p) => sum + Number(p.amount),
-          0
-        );
-        const isPaid = totalPaid >= Number(transaction.totalAmount);
-
-        // SELESAI if paid, BB (Belum Bayar) if not
-        const statusCode = isPaid ? "SELESAI" : "BB";
-        const transactionStatus = await prisma.statusTransaction.findFirst({
-          where: { code: statusCode },
-        });
-
-        if (transactionStatus) {
-          await prisma.transaction.update({
-            where: { id: data.transactionId },
-            data: {
-              statusTransactionId: transactionStatus.id,
-              completionDate: new Date(),
-            },
-          });
-        }
+      if (transactionStatus) {
+        updateTransactionData.statusTransactionId = transactionStatus.id;
+        updateTransactionData.completionDate = new Date();
       }
     }
+
+    await prisma.transaction.update({
+      where: { id: data.transactionId },
+      data: updateTransactionData,
+    });
 
     revalidatePath(`/dashboard/transactions/${data.transactionId}`);
     revalidatePath("/dashboard/transactions");
     revalidatePath("/dashboard/production");
+    revalidatePath("/dashboard/finance");
+    revalidatePath("/dashboard/finance/create");
+    revalidatePath("/dashboard/finance/cashbook");
     return {
       success: true,
       allPickedUp,
       message: allPickedUp
-        ? "Semua item sudah diambil, transaksi selesai"
+        ? isPaidAfter
+          ? "Semua item diambil dan transaksi lunas"
+          : "Semua item diambil, transaksi belum lunas"
         : `${data.itemIds.length} item berhasil ditandai diambil`,
     };
   } catch (error) {

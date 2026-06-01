@@ -4,7 +4,7 @@ import { TransactionCreateForm } from "./transaction-create-form";
 import { unstable_cache } from "next/cache";
 
 const getFormData = unstable_cache(async () => {
-  const [customersRaw, itemsRaw, fabricsRaw, statusTransactions, statusItems, paymentTypes, wallets] = await Promise.all([
+  const [customersRaw, itemsRaw, fabricsRaw, statusTransactions, statusItems, paymentTypes, wallets, designs] = await Promise.all([
     prisma.customer.findMany({
       where: { rowStatus: true },
       select: { id: true, name: true, phoneNumber: true },
@@ -12,7 +12,7 @@ const getFormData = unstable_cache(async () => {
     }),
     prisma.item.findMany({
       where: { rowStatus: true },
-      select: { id: true, name: true, customerPrice: true },
+      select: { id: true, name: true, customerPrice: true, defaultDesignId: true },
       orderBy: { name: "asc" },
     }),
     prisma.fabric.findMany({
@@ -41,6 +41,11 @@ const getFormData = unstable_cache(async () => {
       select: { id: true, name: true, walletType: true },
       orderBy: { name: "asc" },
     }),
+    prisma.clothingDesign.findMany({
+      where: { rowStatus: true },
+      select: { id: true, name: true, itemId: true, genderTarget: true },
+      orderBy: [{ isBuiltin: "desc" }, { name: "asc" }],
+    }),
   ]);
 
   // Convert Decimal to number for client components
@@ -54,7 +59,7 @@ const getFormData = unstable_cache(async () => {
     pricePerMeter: Number(fabric.pricePerMeter)
   }));
 
-  return { customers, items, fabrics, statusTransactions, statusItems, paymentTypes, wallets };
+  return { customers, items, fabrics, statusTransactions, statusItems, paymentTypes, wallets, designs };
 }, ["transaction-create-form-data"], { revalidate: 120, tags: ["transaction-create-form-data"] });
 
 export default async function TransactionCreatePage() {

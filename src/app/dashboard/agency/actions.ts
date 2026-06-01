@@ -194,6 +194,7 @@ export async function importAgencyCustomersFromExcel(
 
     // Check for duplicates in database and same-file duplicates
     const duplicates: DuplicateInfo[] = [];
+    const reassigned: Array<{ row: number; name: string; fromAgencyId: number | null }> = [];
     const toImport: ImportRow[] = [];
     const seenInFile = new Set<string>();
 
@@ -215,31 +216,45 @@ export async function importAgencyCustomersFromExcel(
       }
       seenInFile.add(fileKey);
 
-      // Check by name and phone in same agency
+      // Check existing customer globally (phone preferred, fallback name)
       const existing = await prisma.customer.findFirst({
         where: {
-          agencyId,
           OR: [
-            { name: { equals: row.name.trim(), mode: "insensitive" } },
             ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : []),
+            { name: { equals: row.name.trim(), mode: "insensitive" } },
           ],
         },
+        select: { id: true, name: true, phoneNumber: true, agencyId: true },
       });
 
       if (existing) {
-        let reason = "";
-        if (existing.name.toLowerCase() === normalizedName) {
-          reason = "Nama sama";
+        if (existing.agencyId === agencyId) {
+          let reason = "";
+          if (existing.name.toLowerCase() === normalizedName) {
+            reason = "Nama sama";
+          }
+          if (normalizedPhone && existing.phoneNumber === normalizedPhone) {
+            reason += (reason ? " & " : "") + "Nomor telepon sama";
+          }
+          duplicates.push({
+            row: i + 2,
+            name: row.name,
+            phone: row.phoneNumber,
+            reason,
+          });
+          continue;
         }
-        if (normalizedPhone && existing.phoneNumber === normalizedPhone) {
-          reason += (reason ? " & " : "") + "Nomor telepon sama";
-        }
-        duplicates.push({
-          row: i + 2, // Excel row (header is row 1)
-          name: row.name,
-          phone: row.phoneNumber,
-          reason,
+
+        await prisma.customer.update({
+          where: { id: existing.id },
+          data: {
+            agencyId,
+            name: row.name.trim(),
+            phoneNumber: normalizePhoneNumber(row.phoneNumber),
+            gender: row.gender || null,
+          },
         });
+        reassigned.push({ row: i + 2, name: row.name, fromAgencyId: existing.agencyId });
       } else {
         toImport.push(row);
       }
@@ -270,6 +285,8 @@ export async function importAgencyCustomersFromExcel(
     return {
       success: true,
       imported: importedCount,
+      reassignedCount: reassigned.length,
+      reassigned,
       duplicates,
       total: rows.length,
     };

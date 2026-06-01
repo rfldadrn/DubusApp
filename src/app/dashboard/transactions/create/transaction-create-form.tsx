@@ -17,12 +17,13 @@ import { LoadingOverlay } from "@/components/shared/loading-overlay";
 
 type FormDataType = {
   customers: Array<{ id: number; name: string; phoneNumber: string | null }>;
-  items: Array<{ id: number; name: string; customerPrice: number }>;
+  items: Array<{ id: number; name: string; customerPrice: number; defaultDesignId: number | null }>;
   fabrics: Array<{ id: number; name: string; pricePerMeter: number }>;
   statusTransactions: Array<{ id: number; name: string }>;
   statusItems: Array<{ id: number; name: string; sequence: number }>;
   paymentTypes: Array<{ id: number; name: string }>;
   wallets: Array<{ id: number; name: string; walletType: string }>;
+  designs: Array<{ id: number; name: string; itemId: number | null; genderTarget: string }>;
 };
 
 type ItemCharge = {
@@ -39,6 +40,8 @@ type TransactionItem = {
   fabricMeters?: number;
   sewingPrice: number;
   modelDescription?: string;
+  designId?: number;
+  useDefaultDesign?: boolean;
   headerSizeCustomerId?: number;
   charges: ItemCharge[];
 };
@@ -55,7 +58,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   const [statusTransactionId, setStatusTransactionId] = useState(formData.statusTransactions[0]?.id.toString() || "");
   const [note, setNote] = useState("");
   const [items, setItems] = useState<TransactionItem[]>([
-    { itemId: 0, fabricSource: "Customer", sewingPrice: 0, charges: [] },
+    { itemId: 0, fabricSource: "Customer", sewingPrice: 0, designId: undefined, useDefaultDesign: false, charges: [] },
   ]);
 
   // Payment states
@@ -75,7 +78,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   const [invoiceData, setInvoiceData] = useState<any>(null);
 
   const addItem = () => {
-    setItems([...items, { itemId: 0, fabricSource: "Customer", sewingPrice: 0, charges: [] }]);
+    setItems([...items, { itemId: 0, fabricSource: "Customer", sewingPrice: 0, designId: undefined, useDefaultDesign: false, charges: [] }]);
   };
 
   const removeItem = (index: number) => {
@@ -85,32 +88,36 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   };
 
   const updateItem = (index: number, field: keyof TransactionItem, value: any) => {
-    const newItems = [...items];
-    newItems[index] = { ...newItems[index], [field]: value };
+    setItems((prevItems) => {
+      const newItems = [...prevItems];
+      newItems[index] = { ...newItems[index], [field]: value };
 
-    // Auto-calculate sewing price when item is selected
-    if (field === "itemId") {
-      const selectedItem = formData.items.find((item) => item.id === Number(value));
-      if (selectedItem) {
-        newItems[index].sewingPrice = Number(selectedItem.customerPrice);
+      // Auto-calculate sewing price when item is selected
+      if (field === "itemId") {
+        const selectedItem = formData.items.find((item) => item.id === Number(value));
+        if (selectedItem) {
+          newItems[index].sewingPrice = Number(selectedItem.customerPrice);
+          newItems[index].designId = undefined;
+          newItems[index].useDefaultDesign = false;
+        }
+        // Reset size selection when item changes
+        newItems[index].headerSizeCustomerId = undefined;
+        // Fetch available sizes for this item and customer
+        if (customerId && Number(value) > 0) {
+          fetchAvailableSizes(Number(customerId), Number(value));
+        }
       }
-      // Reset size selection when item changes
-      newItems[index].headerSizeCustomerId = undefined;
-      // Fetch available sizes for this item and customer
-      if (customerId && Number(value) > 0) {
-        fetchAvailableSizes(Number(customerId), Number(value));
-      }
-    }
 
-    // Auto-fill fabric price when fabric is selected
-    if (field === "fabricId") {
-      const selectedFabric = formData.fabrics.find((fabric) => fabric.id === Number(value));
-      if (selectedFabric) {
-        newItems[index].fabricPrice = Number(selectedFabric.pricePerMeter);
+      // Auto-fill fabric price when fabric is selected
+      if (field === "fabricId") {
+        const selectedFabric = formData.fabrics.find((fabric) => fabric.id === Number(value));
+        if (selectedFabric) {
+          newItems[index].fabricPrice = Number(selectedFabric.pricePerMeter);
+        }
       }
-    }
 
-    setItems(newItems);
+      return newItems;
+    });
   };
 
   const addCharge = (itemIndex: number) => {
@@ -295,6 +302,8 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
           fabricMeters: item.fabricMeters,
           sewingPrice: item.sewingPrice,
           modelDescription: item.modelDescription,
+          designId: item.designId,
+          useDefaultDesign: item.useDefaultDesign ?? false,
           statusItemId: formData.statusItems[0]?.id || 1,
           headerSizeCustomerId: item.headerSizeCustomerId,
           charges: item.charges.map((charge) => ({
@@ -573,6 +582,42 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
                   placeholder="Deskripsi model jahitan (opsional)"
                   rows={2}
                 />
+              </div>
+
+              <div className="md:col-span-2">
+                <Label>Design Sketsa (untuk Bon)</Label>
+                <Select
+                  value={item.designId ? String(item.designId) : item.useDefaultDesign ? "default" : "none"}
+                  onValueChange={(v) => {
+                    if (v === "none") {
+                      updateItem(index, "designId", undefined);
+                      updateItem(index, "useDefaultDesign", false);
+                      return;
+                    }
+                    if (v === "default") {
+                      updateItem(index, "designId", undefined);
+                      updateItem(index, "useDefaultDesign", true);
+                      return;
+                    }
+                    updateItem(index, "designId", Number(v));
+                    updateItem(index, "useDefaultDesign", false);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Default dari Item" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Kosong (gambar manual)</SelectItem>
+                    <SelectItem value="default">Default dari Item</SelectItem>
+                    {formData.designs
+                      .filter((d) => !d.itemId || d.itemId === item.itemId)
+                      .map((d) => (
+                        <SelectItem key={d.id} value={String(d.id)}>
+                          {d.name} ({d.genderTarget})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Biaya Tambahan Section */}

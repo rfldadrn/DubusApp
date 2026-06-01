@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { BUILTIN_DESIGNS } from "../src/lib/clothing-designs";
 
 const prisma = new PrismaClient();
 
@@ -97,6 +98,7 @@ async function main() {
     { id: 10, menuName: "Payroll", menuUrl: "/dashboard/finance/payroll", menuIcon: "HandCoins", menuSlug: "payroll", isMenu: true, orderNo: 2, parentId: 5 },
     { id: 11, menuName: "Agency", menuUrl: "/dashboard/agency", menuIcon: "Building2", menuSlug: "agency", isMenu: true, orderNo: 6, parentId: 0 },
     { id: 12, menuName: "Pengantaran", menuUrl: "/dashboard/delivery", menuIcon: "Truck", menuSlug: "delivery", isMenu: true, orderNo: 10, parentId: 0 },
+    { id: 13, menuName: "Design Pakaian", menuUrl: "/dashboard/master/clothing-designs", menuIcon: "Shirt", menuSlug: "clothing-designs", isMenu: true, orderNo: 1, parentId: 6 },
   ];
 
   for (const menu of menus) {
@@ -113,16 +115,16 @@ async function main() {
   // Clear existing mappings
   await prisma.roleMenuMapping.deleteMany({});
 
-  // SuperAdmin: all menus (1-12)
+  // SuperAdmin: all menus (1-13)
   let mappingId = 1;
-  for (let i = 1; i <= 12; i++) {
+  for (let i = 1; i <= 13; i++) {
     await prisma.roleMenuMapping.create({
       data: { id: mappingId++, roleId: 1, menuId: i },
     });
   }
 
-  // Administrator: Dashboard, Transaksi, Pelanggan, Produksi, Keuangan, Laporan, Kas, Payroll, Agency, Delivery
-  const adminMenus = [1, 2, 3, 4, 5, 7, 9, 10, 11, 12];
+  // Administrator: Dashboard, Transaksi, Pelanggan, Produksi, Keuangan, Laporan, Kas, Payroll, Agency, Delivery, Design Pakaian
+  const adminMenus = [1, 2, 3, 4, 5, 7, 9, 10, 11, 12, 13];
   for (const menuId of adminMenus) {
     await prisma.roleMenuMapping.create({
       data: { id: mappingId++, roleId: 2, menuId },
@@ -575,6 +577,45 @@ async function main() {
   }
 
   console.log("✅ Fabrics seeded");
+
+  // === 24. CLOTHING DESIGNS (sketsa untuk bon) ===
+  for (const d of BUILTIN_DESIGNS) {
+    await prisma.clothingDesign.upsert({
+      where: { code: d.code },
+      update: {
+        name: d.name,
+        description: d.description,
+        category: d.category,
+        genderTarget: d.genderTarget,
+        svgContent: d.svg,
+        isBuiltin: true,
+      },
+      create: {
+        code: d.code,
+        name: d.name,
+        description: d.description,
+        category: d.category,
+        genderTarget: d.genderTarget,
+        svgContent: d.svg,
+        isBuiltin: true,
+      },
+    });
+  }
+  console.log("✅ Clothing designs seeded");
+
+  // === 25. ITEM DEFAULT DESIGN MAPPING ===
+  for (const d of BUILTIN_DESIGNS) {
+    if (!d.itemCode) continue;
+    const item = await prisma.item.findUnique({ where: { code: d.itemCode } });
+    const design = await prisma.clothingDesign.findUnique({ where: { code: d.code } });
+    if (item && design && item.defaultDesignId !== design.id) {
+      await prisma.item.update({
+        where: { id: item.id },
+        data: { defaultDesignId: design.id },
+      });
+    }
+  }
+  console.log("✅ Item default designs linked");
 
   console.log("\n🎉 Seeding completed!");
   console.log("📋 Login credentials:");

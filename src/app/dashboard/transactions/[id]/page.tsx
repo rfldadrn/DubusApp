@@ -12,31 +12,70 @@ import { TransactionDetailClient } from "./transaction-detail-client";
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
 
+function toPlainObject<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 export default async function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const transactionRaw = await prisma.transaction.findUnique({
-    where: { id: Number(id) },
-    include: {
-      customer: true,
-      statusTransaction: true,
-      items: {
-        include: {
-          item: true,
-          statusItem: true,
-          fabric: true,
-          headerSizeCustomer: true,
-          charges: true,
+  const transactionId = Number(id);
+  const [transactionRaw, paymentTypes, wallets] = await Promise.all([
+    prisma.transaction.findUnique({
+      where: { id: transactionId },
+      include: {
+        customer: true,
+        statusTransaction: true,
+        items: {
+          include: {
+            item: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+              },
+            },
+            statusItem: true,
+            fabric: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            headerSizeCustomer: true,
+            charges: true,
+          },
+        },
+        payments: {
+          include: {
+            paymentType: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            wallet: {
+              select: {
+                id: true,
+                name: true,
+                walletType: true,
+              },
+            },
+          },
+          orderBy: { paidAt: "desc" },
         },
       },
-      payments: {
-        include: {
-          paymentType: true,
-          wallet: true,
-        },
-        orderBy: { paidAt: "desc" },
-      },
-    },
-  });
+    }),
+    prisma.paymentType.findMany({
+      where: { rowStatus: true },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.wallet.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true, walletType: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   if (!transactionRaw) return notFound();
 
@@ -72,6 +111,10 @@ export default async function TransactionDetailPage({ params }: { params: Promis
   const totalPaid = transaction.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
   const remaining = grandTotal - totalPaid;
 
+  const transactionPlain = toPlainObject(transaction);
+  const paymentTypesPlain = toPlainObject(paymentTypes);
+  const walletsPlain = toPlainObject(wallets);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -80,7 +123,11 @@ export default async function TransactionDetailPage({ params }: { params: Promis
           <p className="text-muted-foreground">Informasi lengkap transaksi</p>
         </div>
         <div className="flex gap-2">
-          <TransactionDetailClient transaction={transaction} />
+          <TransactionDetailClient
+            transaction={transactionPlain}
+            paymentTypes={paymentTypesPlain}
+            wallets={walletsPlain}
+          />
           <Link href={`/dashboard/transactions/${transaction.id}/edit`}>
             <Button variant="outline">Edit Transaksi</Button>
           </Link>

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { InvoiceDialog } from "@/components/shared/invoice-dialog";
 import { PaymentHistoryDialog } from "./payment-history-dialog";
@@ -21,9 +22,11 @@ type Transaction = any;
 
 type TransactionDetailClientProps = {
   transaction: Transaction;
+  paymentTypes: Array<{ id: number; name: string }>;
+  wallets: Array<{ id: number; name: string; walletType: string }>;
 };
 
-export function TransactionDetailClient({ transaction }: TransactionDetailClientProps) {
+export function TransactionDetailClient({ transaction, paymentTypes, wallets }: TransactionDetailClientProps) {
   const router = useRouter();
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false);
@@ -35,6 +38,10 @@ export function TransactionDetailClient({ transaction }: TransactionDetailClient
   const [selectedPickupItems, setSelectedPickupItems] = useState<number[]>([]);
   const [pickerName, setPickerName] = useState("");
   const [pickupNotes, setPickupNotes] = useState("");
+  const [pickupPaymentAmount, setPickupPaymentAmount] = useState("");
+  const [pickupPaymentTypeId, setPickupPaymentTypeId] = useState("");
+  const [pickupWalletId, setPickupWalletId] = useState("");
+  const [pickupPaymentNote, setPickupPaymentNote] = useState("");
 
   // Cancel state
   const [cancelReason, setCancelReason] = useState("");
@@ -48,11 +55,17 @@ export function TransactionDetailClient({ transaction }: TransactionDetailClient
   );
   const isCancelled = transaction.statusTransaction?.code === "BTL";
   const isCompleted = transaction.statusTransaction?.code === "SELESAI";
+  const totalPaid = transaction.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+  const remainingPayment = Math.max(0, Number(transaction.totalAmount) - totalPaid);
 
   const openPickupDialog = () => {
     setSelectedPickupItems(readyItems.map((item: any) => item.id));
     setPickerName("");
     setPickupNotes("");
+    setPickupPaymentAmount("");
+    setPickupPaymentTypeId("");
+    setPickupWalletId("");
+    setPickupPaymentNote("Pembayaran saat pengambilan pakaian");
     setPickupOpen(true);
   };
 
@@ -61,6 +74,22 @@ export function TransactionDetailClient({ transaction }: TransactionDetailClient
       toast.error("Pilih minimal 1 item");
       return;
     }
+
+    const paymentAmount = Number(pickupPaymentAmount || "0");
+    const hasPickupPayment = paymentAmount > 0;
+
+    if (hasPickupPayment) {
+      if (!pickupPaymentTypeId || !pickupWalletId) {
+        toast.error("Metode pembayaran dan wallet wajib diisi");
+        return;
+      }
+
+      if (paymentAmount > remainingPayment) {
+        toast.error(`Jumlah melebihi sisa tagihan (sisa Rp ${remainingPayment.toLocaleString("id-ID")})`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       const result = await pickupItems({
@@ -68,6 +97,14 @@ export function TransactionDetailClient({ transaction }: TransactionDetailClient
         itemIds: selectedPickupItems,
         pickerName: pickerName || undefined,
         notes: pickupNotes || undefined,
+        payment: hasPickupPayment
+          ? {
+              amount: paymentAmount,
+              paymentTypeId: Number(pickupPaymentTypeId),
+              walletId: Number(pickupWalletId),
+              note: pickupPaymentNote || undefined,
+            }
+          : undefined,
       });
       if (result.success) {
         toast.success(result.message);
@@ -264,6 +301,67 @@ export function TransactionDetailClient({ transaction }: TransactionDetailClient
                 {pickedUpItems.length} item sudah diambil sebelumnya
               </div>
             )}
+
+            <div className="border rounded-lg p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Pembayaran saat Pengambilan (opsional)</Label>
+                <Badge variant="outline">Sisa Rp {remainingPayment.toLocaleString("id-ID")}</Badge>
+              </div>
+              <div>
+                <Label className="text-sm">Jumlah Bayar</Label>
+                <Input
+                  type="text"
+                  value={pickupPaymentAmount === "" ? "" : Number(pickupPaymentAmount).toLocaleString("id-ID")}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[^0-9]/g, "");
+                    setPickupPaymentAmount(value);
+                  }}
+                  placeholder="0"
+                />
+              </div>
+              {Number(pickupPaymentAmount || "0") > 0 && (
+                <>
+                  <div>
+                    <Label className="text-sm">Metode Pembayaran</Label>
+                    <Select value={pickupPaymentTypeId} onValueChange={setPickupPaymentTypeId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih metode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentTypes.map((type) => (
+                          <SelectItem key={type.id} value={String(type.id)}>
+                            {type.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm">Wallet / Kas</Label>
+                    <Select value={pickupWalletId} onValueChange={setPickupWalletId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Pilih wallet" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {wallets.map((wallet) => (
+                          <SelectItem key={wallet.id} value={String(wallet.id)}>
+                            {wallet.name} ({wallet.walletType})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-sm">Catatan Pembayaran (opsional)</Label>
+                    <Input
+                      value={pickupPaymentNote}
+                      onChange={(e) => setPickupPaymentNote(e.target.value)}
+                      placeholder="Pelunasan saat pengambilan"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
 
             <div>
               <Label className="text-sm">Nama Pengambil (opsional)</Label>

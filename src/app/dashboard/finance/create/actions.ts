@@ -58,6 +58,7 @@ export async function createPayment(data: {
 
       await tx.cashLedger.create({
         data: {
+          entryDate: transaction.transactionDate,
           type: "Debit",
           category: "Pembayaran Pelanggan",
           description: `Pembayaran ${transaction.transactionCode}`,

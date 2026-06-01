@@ -278,23 +278,51 @@ model PaymentType {
 // customerPrice = harga jual ke pelanggan
 // employeePrice = ongkos jahit internal (margin & gaji karyawan)
 model Item {
-  id            Int          @id @default(autoincrement())
-  code          String       @unique @db.VarChar(10)
-  name          String       @db.VarChar(150)
-  description   String?      @db.Text
-  category      String?      @db.VarChar(100)
-  genderTarget  GenderTarget @default(Unisex)
-  customerPrice Decimal      @db.Decimal(10, 2)
-  employeePrice Decimal      @db.Decimal(10, 2)
-  rowStatus     Boolean      @default(true)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id               Int          @id @default(autoincrement())
+  code             String       @unique @db.VarChar(10)
+  name             String       @db.VarChar(150)
+  description      String?      @db.Text
+  category         String?      @db.VarChar(100)
+  genderTarget     GenderTarget @default(Unisex)
+  customerPrice    Decimal      @db.Decimal(10, 2)
+  employeePrice    Decimal      @db.Decimal(10, 2)
+  defaultDesignId  Int?
+  rowStatus        Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
+  defaultDesign       ClothingDesign?      @relation("ItemDefaultDesign", fields: [defaultDesignId], references: [id], onDelete: SetNull)
+  designs             ClothingDesign[]     @relation("ItemDesigns")
   itemSizes           ItemSize[]
   headerSizeCustomers HeaderSizeCustomer[]
   transactionItems    TransactionItem[]
 
   @@map("items")
+}
+
+// Sketsa design pakaian (SVG) untuk ditempel di bon produksi.
+// isBuiltin = preset sistem (tidak boleh dihapus dari UI).
+// itemId  = batasan opsional ke jenis pakaian tertentu; null = bisa dipakai semua item.
+model ClothingDesign {
+  id           Int          @id @default(autoincrement())
+  code         String       @unique @db.VarChar(50)
+  name         String       @db.VarChar(150)
+  description  String?      @db.VarChar(255)
+  category     String?      @db.VarChar(100)
+  genderTarget GenderTarget @default(Unisex)
+  svgContent   String       @db.Text
+  isBuiltin    Boolean      @default(false)
+  itemId       Int?
+  rowStatus    Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  item             Item?             @relation("ItemDesigns", fields: [itemId], references: [id], onDelete: SetNull)
+  defaultForItems  Item[]            @relation("ItemDefaultDesign")
+  transactionItems TransactionItem[]
+
+  @@index([rowStatus, itemId])
+  @@map("clothing_designs")
 }
 
 // Field ukuran per jenis pakaian
@@ -505,6 +533,8 @@ model TransactionItem {
   fabricMeters         Decimal?     @db.Decimal(10, 2)
   modelDescription     String?      @db.Text
   modelImageUrl        String?      @db.VarChar(500)
+  designId             Int?
+  useDefaultDesign     Boolean      @default(true)
   sewingPrice          Decimal      @db.Decimal(10, 2)
   targetDate           DateTime?
   statusItemId         Int
@@ -517,6 +547,7 @@ model TransactionItem {
   item               Item                    @relation(fields: [itemId], references: [id], onDelete: Restrict)
   headerSizeCustomer HeaderSizeCustomer?     @relation(fields: [headerSizeCustomerId], references: [id], onDelete: SetNull)
   fabric             Fabric?                 @relation(fields: [fabricId], references: [id], onDelete: SetNull)
+  design             ClothingDesign?         @relation(fields: [designId], references: [id], onDelete: SetNull)
   statusItem         StatusItem              @relation(fields: [statusItemId], references: [id], onDelete: Restrict)
   assignedTailor     Employee?               @relation(fields: [assignedTailorId], references: [id], onDelete: SetNull)
   charges            TransactionItemCharge[]

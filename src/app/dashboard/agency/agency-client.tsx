@@ -40,7 +40,9 @@ export function AgencyClient() {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importResult, setImportResult] = useState<{
     imported: number;
+    reassignedCount: number;
     duplicates: Array<{ row: number; name: string; phone?: string; reason: string }>;
+    reassigned: Array<{ row: number; name: string; fromAgencyId: number | null }>;
     total: number;
   } | null>(null);
 
@@ -136,10 +138,12 @@ export function AgencyClient() {
       if (result.success) {
         setImportResult({
           imported: result.imported || 0,
+          reassignedCount: result.reassignedCount || 0,
           duplicates: result.duplicates || [],
+          reassigned: result.reassigned || [],
           total: result.total || 0,
         });
-        toast.success(`${result.imported} data berhasil diimport`);
+        toast.success(`${result.imported} data baru diimport, ${result.reassignedCount || 0} data existing di-assign ke agency ini`);
         if ((result.duplicates || []).length > 0) {
           toast.warning(`${result.duplicates?.length} data duplikat dilewati`);
         }
@@ -339,9 +343,28 @@ export function AgencyClient() {
               <div className="space-y-3">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <p className="text-sm font-medium text-green-900">
-                    ✓ {importResult.imported} dari {importResult.total} data berhasil diimport
+                    ✓ {importResult.imported} data baru diimport
+                  </p>
+                  <p className="text-sm font-medium text-green-900">
+                    ↻ {importResult.reassignedCount} data existing di-assign/timpa ke agency ini
                   </p>
                 </div>
+
+                {importResult.reassigned.length > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
+                    <p className="text-sm font-medium text-emerald-900 mb-2">
+                      Data existing yang dipindahkan:
+                    </p>
+                    <div className="max-h-24 overflow-y-auto space-y-1">
+                      {importResult.reassigned.map((row, idx) => (
+                        <div key={idx} className="text-xs text-emerald-800">
+                          <span className="font-medium">Baris {row.row}:</span> {row.name}
+                          {row.fromAgencyId ? ` (dari agency #${row.fromAgencyId})` : " (sebelumnya tanpa agency)"}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {importResult.duplicates.length > 0 && (
                   <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">

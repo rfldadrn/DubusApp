@@ -19,6 +19,8 @@ type TransactionItemInput = {
   fabricMeters?: number;
   sewingPrice: number;
   modelDescription?: string;
+  designId?: number;
+  useDefaultDesign?: boolean;
   statusItemId: number;
   headerSizeCustomerId?: number;
   charges: ItemChargeInput[];
@@ -211,6 +213,8 @@ export async function createTransaction(data: TransactionInput) {
           fabricMeters: item.fabricMeters || null,
           modelDescription: item.modelDescription,
           sewingPrice: item.sewingPrice,
+          designId: item.designId,
+          useDefaultDesign: item.useDefaultDesign ?? true,
           statusItemId: item.statusItemId,
           headerSizeCustomerId: item.headerSizeCustomerId,
           charges: {
@@ -303,6 +307,7 @@ export async function createTransaction(data: TransactionInput) {
       try {
         await prisma.cashLedger.create({
           data: {
+            entryDate: transaction.transactionDate,
             type: "Debit",
             category: "Pembayaran Pelanggan",
             description: `Pembayaran ${transaction.transactionCode}`,
@@ -321,6 +326,7 @@ export async function createTransaction(data: TransactionInput) {
 
         await prisma.cashLedger.create({
           data: {
+            entryDate: transaction.transactionDate,
             type: "Debit",
             category: "Pembayaran Pelanggan",
             description: `Pembayaran ${transaction.transactionCode}`,

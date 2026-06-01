@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { TransactionEditForm } from "./transaction-edit-form";
 
 async function getFormData() {
-  const [customersRaw, itemsRaw, fabricsRaw, statusTransactions, statusItems, paymentTypes, wallets] = await Promise.all([
+  const [customersRaw, itemsRaw, fabricsRaw, statusTransactions, statusItems, paymentTypes, wallets, designs] = await Promise.all([
     prisma.customer.findMany({
       where: { rowStatus: true },
       select: { id: true, name: true, phoneNumber: true },
@@ -12,7 +12,7 @@ async function getFormData() {
     }),
     prisma.item.findMany({
       where: { rowStatus: true },
-      select: { id: true, name: true, customerPrice: true },
+      select: { id: true, name: true, customerPrice: true, defaultDesignId: true },
       orderBy: { name: "asc" },
     }),
     prisma.fabric.findMany({
@@ -40,6 +40,11 @@ async function getFormData() {
       select: { id: true, name: true, walletType: true },
       orderBy: { name: "asc" },
     }),
+    prisma.clothingDesign.findMany({
+      where: { rowStatus: true },
+      select: { id: true, name: true, itemId: true, genderTarget: true },
+      orderBy: [{ isBuiltin: "desc" }, { name: "asc" }],
+    }),
   ]);
 
   // Convert Decimal to number for client components
@@ -53,7 +58,7 @@ async function getFormData() {
     pricePerMeter: Number(fabric.pricePerMeter)
   }));
 
-  return { customers, items, fabrics, statusTransactions, statusItems, paymentTypes, wallets };
+  return { customers, items, fabrics, statusTransactions, statusItems, paymentTypes, wallets, designs };
 }
 
 async function getTransaction(id: number) {

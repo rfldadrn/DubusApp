@@ -4,9 +4,17 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
+const SESSION_MAX_AGE_SECONDS = 60 * 60;
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  },
+  jwt: {
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  },
   pages: {
     signIn: "/login",
   },

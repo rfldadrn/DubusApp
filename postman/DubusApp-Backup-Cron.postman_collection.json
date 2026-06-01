@@ -1,0 +1,182 @@
+{
+  "info": {
+    "name": "DubusApp Backup Cron",
+    "description": "Collection untuk testing endpoint cron backup DubusApp (lokal dan Vercel).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "6a53ef8d-f6c8-4574-a3d3-6aceccca9c7c"
+  },
+  "item": [
+    {
+      "name": "01 - Local Cron Unauthorized",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{localBaseUrl}}/api/cron/db-backup",
+          "host": [
+            "{{localBaseUrl}}"
+          ],
+          "path": [
+            "api",
+            "cron",
+            "db-backup"
+          ]
+        },
+        "description": "Harus menghasilkan 401 jika tanpa Authorization header."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 401', function () {",
+              "  pm.response.to.have.status(401);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Local Cron Authorized",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{cronSecret}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{localBaseUrl}}/api/cron/db-backup",
+          "host": [
+            "{{localBaseUrl}}"
+          ],
+          "path": [
+            "api",
+            "cron",
+            "db-backup"
+          ]
+        },
+        "description": "Authorized call. Bisa 200 jika webhook runner sukses, atau 500/502 jika webhook belum siap."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is one of expected values', function () {",
+              "  pm.expect([200, 500, 502]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Vercel Cron Authorized",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{cronSecret}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{vercelBaseUrl}}/api/cron/db-backup",
+          "host": [
+            "{{vercelBaseUrl}}"
+          ],
+          "path": [
+            "api",
+            "cron",
+            "db-backup"
+          ]
+        },
+        "description": "Test endpoint cron di Vercel secara manual."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is one of expected values', function () {",
+              "  pm.expect([200, 401, 500, 502]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Backup Webhook Direct Test",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{backupWebhookToken}}",
+            "type": "text"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"source\": \"postman-manual-test\",\n  \"timestamp\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{backupWebhookUrl}}",
+          "host": [
+            "{{backupWebhookUrl}}"
+          ]
+        },
+        "description": "Optional. Test endpoint backup runner secara langsung."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is one of expected values', function () {",
+              "  pm.expect([200, 201, 202, 401, 403, 500]).to.include(pm.response.code);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "localBaseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "vercelBaseUrl",
+      "value": "https://dubus-app.vercel.app"
+    },
+    {
+      "key": "cronSecret",
+      "value": ""
+    },
+    {
+      "key": "backupWebhookUrl",
+      "value": "https://your-backup-runner.example.com/backup"
+    },
+    {
+      "key": "backupWebhookToken",
+      "value": ""
+    }
+  ]
+}

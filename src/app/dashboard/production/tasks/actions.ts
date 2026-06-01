@@ -1,12 +1,19 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
+
+async function requireAuth() {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+}
 
 export async function getEmployeeTasks(filters?: {
   employeeId?: number;
   isPaid?: boolean;
   search?: string;
 }) {
+  await requireAuth();
   const where: any = {};
   if (filters?.employeeId) where.employeeId = filters.employeeId;
   if (filters?.isPaid !== undefined) where.isPaid = filters.isPaid;
@@ -55,6 +62,7 @@ export async function getEmployeeTasks(filters?: {
 }
 
 export async function getEmployeeList() {
+  await requireAuth();
   return prisma.employee.findMany({
     where: { rowStatus: true },
     select: { id: true, name: true },

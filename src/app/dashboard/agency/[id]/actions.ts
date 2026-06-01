@@ -246,6 +246,56 @@ interface MeasurementData {
   downPayment?: number;
 }
 
+export async function addAgencyEmployee(
+  agencyId: number,
+  data: { name: string; phoneNumber?: string; gender?: "Laki_laki" | "Perempuan" }
+) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+
+    const name = data.name.trim();
+    if (!name) return { success: false, error: "Nama wajib diisi" };
+
+    const normalizedPhone = normalizePhoneNumber(data.phoneNumber);
+
+    const duplicate = await prisma.customer.findFirst({
+      where: {
+        agencyId,
+        OR: [
+          { name: { equals: name, mode: "insensitive" } },
+          ...(normalizedPhone ? [{ phoneNumber: normalizedPhone }] : []),
+        ],
+      },
+      select: { id: true, name: true },
+    });
+
+    if (duplicate) {
+      return { success: false, error: `Pegawai \"${duplicate.name}\" sudah ada di agency ini` };
+    }
+
+    const created = await prisma.customer.create({
+      data: {
+        name,
+        phoneNumber: normalizedPhone,
+        gender: data.gender || null,
+        agencyId,
+      },
+      select: { id: true },
+    });
+
+    revalidatePath("/dashboard/agency");
+    revalidatePath(`/dashboard/agency/${agencyId}`);
+    revalidatePath("/dashboard/customers");
+    revalidateTag("transaction-create-form-data");
+
+    return { success: true, id: created.id };
+  } catch (error) {
+    console.error("addAgencyEmployee error", error);
+    return { success: false, error: "Gagal menambah pegawai" };
+  }
+}
+
 function getInitialPaymentStatus(totalAmount: number, paidAmount: number) {
   if (paidAmount <= 0) return "Unpaid" as const;
   if (paidAmount >= totalAmount) return "Paid" as const;

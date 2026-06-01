@@ -72,25 +72,50 @@ function buildMenuTree(menus: MenuItem[]): MenuItem[] {
   return roots;
 }
 
-function isMenuActive(pathname: string, href: string): boolean {
+function collectNavigableHrefs(items: MenuItem[]): string[] {
+  const hrefs: string[] = [];
+
+  const walk = (nodes: MenuItem[]) => {
+    nodes.forEach((node) => {
+      if (node.href) hrefs.push(node.href);
+      if (node.children?.length) walk(node.children);
+    });
+  };
+
+  walk(items);
+  return hrefs;
+}
+
+function isMenuActive(pathname: string, href: string, allHrefs: string[]): boolean {
+  if (!href) return false;
   if (href === "/dashboard") {
     return pathname === "/dashboard";
   }
-  return pathname === href || pathname.startsWith(href + "/");
+
+  const isDirectMatch = pathname === href || pathname.startsWith(href + "/");
+  if (!isDirectMatch) return false;
+
+  const hasLongerMatch = allHrefs.some((candidate) => {
+    if (!candidate || candidate === href || candidate === "/dashboard") return false;
+    if (!(pathname === candidate || pathname.startsWith(candidate + "/"))) return false;
+    return candidate.length > href.length;
+  });
+
+  return !hasLongerMatch;
 }
 
-function isMenuOrChildActive(pathname: string, item: MenuItem): boolean {
-  if (isMenuActive(pathname, item.href)) return true;
+function isMenuOrChildActive(pathname: string, item: MenuItem, allHrefs: string[]): boolean {
+  if (isMenuActive(pathname, item.href, allHrefs)) return true;
   if (item.children) {
-    return item.children.some((child) => isMenuOrChildActive(pathname, child));
+    return item.children.some((child) => isMenuOrChildActive(pathname, child, allHrefs));
   }
   return false;
 }
 
-function MenuItemComponent({ item, pathname, depth = 0 }: { item: MenuItem; pathname: string; depth?: number }) {
+function MenuItemComponent({ item, pathname, allHrefs, depth = 0 }: { item: MenuItem; pathname: string; allHrefs: string[]; depth?: number }) {
   const hasChildren = item.children && item.children.length > 0;
-  const isActive = isMenuActive(pathname, item.href);
-  const isChildActive = hasChildren && isMenuOrChildActive(pathname, item);
+  const isActive = isMenuActive(pathname, item.href, allHrefs);
+  const isChildActive = hasChildren && isMenuOrChildActive(pathname, item, allHrefs);
   const [expanded, setExpanded] = useState(isChildActive);
   const Icon = iconMap[item.icon] || LayoutDashboard;
 
@@ -119,7 +144,7 @@ function MenuItemComponent({ item, pathname, depth = 0 }: { item: MenuItem; path
         {expanded && (
           <div className="ml-2 mt-1 space-y-1">
             {item.children!.map((child) => (
-              <MenuItemComponent key={`menu-${child.id}`} item={child} pathname={pathname} depth={depth + 1} />
+              <MenuItemComponent key={`menu-${child.id}`} item={child} pathname={pathname} allHrefs={allHrefs} depth={depth + 1} />
             ))}
           </div>
         )}
@@ -148,6 +173,7 @@ function MenuItemComponent({ item, pathname, depth = 0 }: { item: MenuItem; path
 export function Sidebar({ menus }: SidebarProps) {
   const pathname = usePathname();
   const menuTree = buildMenuTree(menus);
+  const allHrefs = collectNavigableHrefs(menuTree);
 
   return (
     <div className="flex flex-col h-full bg-card border-r">
@@ -158,7 +184,7 @@ export function Sidebar({ menus }: SidebarProps) {
 
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {menuTree.map((item) => (
-          <MenuItemComponent key={`menu-${item.id}`} item={item} pathname={pathname} />
+          <MenuItemComponent key={`menu-${item.id}`} item={item} pathname={pathname} allHrefs={allHrefs} />
         ))}
       </nav>
 

@@ -20,6 +20,8 @@ type TransactionItemInput = {
   fabricMeters?: number;
   sewingPrice: number;
   modelDescription?: string;
+  designId?: number;
+  useDefaultDesign?: boolean;
   statusItemId: number;
   headerSizeCustomerId?: number;
   charges: ItemChargeInput[];
@@ -135,6 +137,8 @@ export async function updateTransaction(data: TransactionUpdateInput) {
               fabricMeters: item.fabricMeters || null,
               modelDescription: item.modelDescription,
               sewingPrice: item.sewingPrice,
+              designId: item.designId ?? null,
+              useDefaultDesign: item.useDefaultDesign ?? true,
               statusItemId: item.statusItemId,
               headerSizeCustomerId: item.headerSizeCustomerId,
             },
@@ -184,6 +188,8 @@ export async function updateTransaction(data: TransactionUpdateInput) {
             fabricMeters: item.fabricMeters || null,
             modelDescription: item.modelDescription,
             sewingPrice: item.sewingPrice,
+            designId: item.designId ?? null,
+            useDefaultDesign: item.useDefaultDesign ?? true,
             statusItemId: item.statusItemId,
             headerSizeCustomerId: item.headerSizeCustomerId,
             charges: {

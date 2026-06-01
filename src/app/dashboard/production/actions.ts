@@ -14,6 +14,18 @@ interface StatusUpdateExtra {
 
 const EMPLOYEE_REQUIRED_CODES = ["POTONG", "JAHIT", "PERMAK"] as const;
 
+function extractWorkerNameFromNotes(notes?: string | null): string | null {
+  if (!notes) return null;
+
+  const reassigned = notes.match(/Dipindah tangankan dari (.+?) ke (.+)$/i);
+  if (reassigned?.[2]) return reassigned[2].trim();
+
+  const assigned = notes.match(/(?:ditugaskan ke|assign .* ke)\s+(.+)$/i);
+  if (assigned?.[1]) return assigned[1].trim();
+
+  return null;
+}
+
 export async function updateItemStatus(
   transactionItemId: number,
   statusItemId: number,
@@ -102,13 +114,26 @@ export async function updateItemStatus(
       data: updateData,
     });
 
+    let productionLogNotes = extra.notes || `Status updated to ${newStatus.name}`;
+
+    // If assignment status, persist assignee name in the log so history is immutable.
+    if (extra.employeeId && EMPLOYEE_REQUIRED_CODES.includes(newStatus.code as any)) {
+      const assignee = await prisma.employee.findUnique({
+        where: { id: extra.employeeId },
+        select: { name: true },
+      });
+      if (assignee) {
+        productionLogNotes = `${productionLogNotes} | Ditugaskan ke ${assignee.name}`;
+      }
+    }
+
     // Create production log
     await prisma.productionLog.create({
       data: {
         transactionItemId,
         fromStatusId: currentItem.statusItemId,
         toStatusId: statusItemId,
-        notes: extra.notes || `Status updated to ${newStatus.name}`,
+        notes: productionLogNotes,
         updatedBy: userId,
       },
     });
@@ -415,9 +440,7 @@ export async function bulkAssignWorkerByCurrentStatus(
           transactionItemId: item.id,
           fromStatusId: item.statusItem.id,
           toStatusId: item.statusItem.id,
-          notes:
-            notes?.trim() ||
-            `Bulk assign ${item.statusItem.name} ke ${employee.name}`,
+          notes: notes?.trim() || `Bulk assign ${item.statusItem.name} ke ${employee.name}`,
           updatedBy: userId,
         },
       });
@@ -461,8 +484,6 @@ export async function getProductionLogs(transactionItemId: number) {
 
   const allStatuses = await prisma.statusItem.findMany({ where: { rowStatus: true } });
   const statusMap = Object.fromEntries(allStatuses.map((s) => [s.id, s.name]));
-  const statusCodeMap = Object.fromEntries(allStatuses.map((s) => [s.id, s.code]));
-
   const workerLogs = await prisma.workerLog.findMany({
     where: { transactionItemId },
     include: { employee: true },
@@ -476,17 +497,7 @@ export async function getProductionLogs(transactionItemId: number) {
 
   return {
     logs: logs.map((l) => {
-      const toStatusCode = statusCodeMap[l.toStatusId];
-      let workerName: string | null = null;
-      
-      // Find the worker assigned for this status
-      if (toStatusCode === "POTONG") {
-        const cutterLog = workerLogs.find((w) => w.role === "Cutter");
-        workerName = cutterLog?.employee.name || null;
-      } else if (toStatusCode === "JAHIT" || toStatusCode === "PERMAK") {
-        const tailorLog = workerLogs.find((w) => w.role === "Tailor");
-        workerName = tailorLog?.employee.name || null;
-      }
+      const workerName = extractWorkerNameFromNotes(l.notes);
 
       return {
         id: l.id,
@@ -527,6 +538,15 @@ export async function reassignWorker(
     const session = await auth();
     if (!session?.user?.id) return { success: false, error: "Unauthorized" };
 
+    const existingWorkerLog = await prisma.workerLog.findUnique({
+      where: { id: workerLogId },
+      include: { employee: { select: { name: true } } },
+    });
+
+    if (!existingWorkerLog) {
+      return { success: false, error: "Riwayat pekerja tidak ditemukan" };
+    }
+
     // Update worker log with new employee
     await prisma.workerLog.update({
       where: { id: workerLogId },
@@ -552,7 +572,7 @@ export async function reassignWorker(
           transactionItemId,
           fromStatusId: currentItem.statusItemId,
           toStatusId: currentItem.statusItemId,
-          notes: `Dipindah tangankan ke ${employee?.name || "karyawan lain"}`,
+          notes: `Dipindah tangankan dari ${existingWorkerLog.employee.name} ke ${employee?.name || "karyawan lain"}`,
           updatedBy: Number(session.user.id),
         },
       });
@@ -583,9 +603,11 @@ export async function getBonData(transactionItemId: number) {
             orderBy: { sortOrder: "asc" },
             select: { name: true },
           },
+          defaultDesign: { select: { svgContent: true } },
         },
       },
       fabric: true,
+      design: { select: { svgContent: true } },
       charges: {
         where: { rowStatus: true },
       },
@@ -614,6 +636,9 @@ export async function getBonData(transactionItemId: number) {
 
   const sizes = measuredSizes.length > 0 ? measuredSizes : fallbackSizes;
 
+  const designSvg =
+    transactionItem.design?.svgContent || (transactionItem.useDefaultDesign ? transactionItem.item.defaultDesign?.svgContent : undefined);
+
   return {
     transactionCode: transactionItem.transaction.transactionCode,
     customerName: transactionItem.transaction.customer.name,
@@ -621,6 +646,7 @@ export async function getBonData(transactionItemId: number) {
     itemName: transactionItem.item.name,
     modelDescription: transactionItem.modelDescription || undefined,
     modelImageUrl: transactionItem.modelImageUrl || undefined,
+    designSvg,
     fabricSource: transactionItem.fabricSource,
     fabricName: transactionItem.fabric?.name || transactionItem.fabricName || undefined,
     fabricMeters: transactionItem.fabricMeters ? Number(transactionItem.fabricMeters).toString() : undefined,

@@ -322,14 +322,16 @@ export async function getTransactionRevenueForPeriod(date?: string, period?: str
 
   const payments = await prisma.payment.findMany({
     where: {
-      paidAt: { gte: startDate, lt: endDate },
+      transaction: {
+        transactionDate: { gte: startDate, lt: endDate },
+      },
     },
     include: {
       transaction: { include: { customer: true } },
       paymentType: true,
       wallet: true,
     },
-    orderBy: { paidAt: "desc" },
+    orderBy: { transaction: { transactionDate: "desc" } },
   });
 
   const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -340,6 +342,7 @@ export async function getTransactionRevenueForPeriod(date?: string, period?: str
     payments: payments.map((p) => ({
       id: p.id,
       paidAt: p.paidAt.toISOString(),
+      transactionDate: p.transaction.transactionDate.toISOString(),
       transactionCode: p.transaction.transactionCode,
       customerName: p.transaction.customer.name,
       paymentTypeName: p.paymentType.name,
