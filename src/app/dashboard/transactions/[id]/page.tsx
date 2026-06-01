@@ -102,7 +102,7 @@ export default async function TransactionDetailPage({ params }: { params: Promis
 
   // Calculate totals
   const totalSewing = transaction.items.reduce((sum: number, item: any) => sum + item.sewingPrice, 0);
-  const totalFabric = transaction.items.reduce((sum: number, item: any) => sum + (item.fabricPrice || 0), 0);
+  const totalFabric = transaction.items.reduce((sum: number, item: any) => sum + ((item.fabricPrice * item.fabricMeters) || 0), 0);
   const totalCharges = transaction.items.reduce((sum: number, item: any) => {
     const itemCharges = item.charges.reduce((s: number, c: any) => s + c.amount, 0);
     return sum + itemCharges;
@@ -205,7 +205,7 @@ export default async function TransactionDetailPage({ params }: { params: Promis
                     <TableCell className="font-medium">{item.item.name}</TableCell>
                     <TableCell>{item.fabricSource}</TableCell>
                     <TableCell>Rp {Number(item.sewingPrice).toLocaleString("id-ID")}</TableCell>
-                    <TableCell>Rp {Number(item.fabricPrice || 0).toLocaleString("id-ID")}</TableCell>
+                    <TableCell>Rp {Number((item.fabricPrice * item.fabricMeters) || 0).toLocaleString("id-ID")}</TableCell>
                     <TableCell>Rp {itemCharges.toLocaleString("id-ID")}</TableCell>
                     <TableCell>
                       <Badge style={{ backgroundColor: item.statusItem?.colorSlug || "#gray", color: "white" }}>
