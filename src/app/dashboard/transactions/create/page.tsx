@@ -41,7 +41,7 @@ const getFormData = unstable_cache(async () => {
       select: { id: true, name: true, walletType: true },
       orderBy: { name: "asc" },
     }),
-    prisma.clothingDesign.findMany({
+    prisma.clothing_designs.findMany({
       where: { rowStatus: true },
       select: { id: true, name: true, itemId: true, genderTarget: true },
       orderBy: [{ isBuiltin: "desc" }, { name: "asc" }],

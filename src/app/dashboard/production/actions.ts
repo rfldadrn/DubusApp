@@ -603,11 +603,11 @@ export async function getBonData(transactionItemId: number) {
             orderBy: { sortOrder: "asc" },
             select: { name: true },
           },
-          defaultDesign: { select: { svgContent: true } },
+          clothing_designs_items_defaultDesignIdToclothing_designs: { select: { svgContent: true } },
         },
       },
       fabric: true,
-      design: { select: { svgContent: true } },
+      clothing_designs: { select: { svgContent: true } },
       charges: {
         where: { rowStatus: true },
       },
@@ -637,7 +637,10 @@ export async function getBonData(transactionItemId: number) {
   const sizes = measuredSizes.length > 0 ? measuredSizes : fallbackSizes;
 
   const designSvg =
-    transactionItem.design?.svgContent || (transactionItem.useDefaultDesign ? transactionItem.item.defaultDesign?.svgContent : undefined);
+    transactionItem.clothing_designs?.svgContent ||
+    (transactionItem.useDefaultDesign
+      ? transactionItem.item.clothing_designs_items_defaultDesignIdToclothing_designs?.svgContent
+      : undefined);
 
   return {
     transactionCode: transactionItem.transaction.transactionCode,

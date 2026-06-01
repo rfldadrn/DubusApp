@@ -4,10 +4,14 @@ import { ClothingDesignsClient } from "./clothing-designs-client";
 export const dynamic = "force-dynamic";
 
 export default async function ClothingDesignsPage() {
-  const [designs, items] = await Promise.all([
-    prisma.clothingDesign.findMany({
+  const [designsRaw, items] = await Promise.all([
+    prisma.clothing_designs.findMany({
       where: { rowStatus: true },
-      include: { item: { select: { id: true, name: true, code: true } } },
+      include: {
+        items_clothing_designs_itemIdToitems: {
+          select: { id: true, name: true, code: true },
+        },
+      },
       orderBy: [{ isBuiltin: "desc" }, { name: "asc" }],
     }),
     prisma.item.findMany({
@@ -16,6 +20,11 @@ export default async function ClothingDesignsPage() {
       orderBy: { name: "asc" },
     }),
   ]);
+
+  const designs = designsRaw.map((design) => ({
+    ...design,
+    item: design.items_clothing_designs_itemIdToitems,
+  }));
 
   return (
     <div className="space-y-6">

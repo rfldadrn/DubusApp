@@ -54,12 +54,20 @@ async function requireAuth() {
 
 export async function listClothingDesigns() {
   await requireAuth();
-  const designs = await prisma.clothingDesign.findMany({
+  const designs = await prisma.clothing_designs.findMany({
     where: { rowStatus: true },
-    include: { item: { select: { id: true, name: true, code: true } } },
+    include: {
+      items_clothing_designs_itemIdToitems: {
+        select: { id: true, name: true, code: true },
+      },
+    },
     orderBy: [{ isBuiltin: "desc" }, { name: "asc" }],
   });
-  return designs;
+
+  return designs.map((design) => ({
+    ...design,
+    item: design.items_clothing_designs_itemIdToitems,
+  }));
 }
 
 export async function createClothingDesign(input: unknown) {
@@ -72,10 +80,10 @@ export async function createClothingDesign(input: unknown) {
   if (!v.ok) return { success: false, error: v.error };
 
   try {
-    const existing = await prisma.clothingDesign.findUnique({ where: { code: parsed.data.code } });
+    const existing = await prisma.clothing_designs.findUnique({ where: { code: parsed.data.code } });
     if (existing) return { success: false, error: "Kode sudah dipakai" };
 
-    await prisma.clothingDesign.create({
+    await prisma.clothing_designs.create({
       data: {
         code: parsed.data.code,
         name: parsed.data.name,
@@ -85,6 +93,7 @@ export async function createClothingDesign(input: unknown) {
         svgContent: parsed.data.svgContent,
         itemId: parsed.data.itemId || null,
         isBuiltin: false,
+        updatedAt: new Date(),
       },
     });
     revalidatePath("/dashboard/master/clothing-designs");
@@ -107,13 +116,13 @@ export async function updateClothingDesign(id: number, input: unknown) {
   }
 
   try {
-    const existing = await prisma.clothingDesign.findUnique({ where: { id } });
+    const existing = await prisma.clothing_designs.findUnique({ where: { id } });
     if (!existing) return { success: false, error: "Data tidak ditemukan" };
     if (existing.isBuiltin && parsed.data.code && parsed.data.code !== existing.code) {
       return { success: false, error: "Kode design bawaan tidak boleh diubah" };
     }
 
-    await prisma.clothingDesign.update({
+    await prisma.clothing_designs.update({
       where: { id },
       data: {
         name: parsed.data.name ?? existing.name,
@@ -135,11 +144,11 @@ export async function updateClothingDesign(id: number, input: unknown) {
 export async function deleteClothingDesign(id: number) {
   await requireAuth();
   try {
-    const existing = await prisma.clothingDesign.findUnique({ where: { id } });
+    const existing = await prisma.clothing_designs.findUnique({ where: { id } });
     if (!existing) return { success: false, error: "Data tidak ditemukan" };
     if (existing.isBuiltin) return { success: false, error: "Design bawaan tidak bisa dihapus" };
     // Soft delete supaya tidak break transaksi lama yang mereferensikan design ini.
-    await prisma.clothingDesign.update({ where: { id }, data: { rowStatus: false } });
+    await prisma.clothing_designs.update({ where: { id }, data: { rowStatus: false } });
     revalidatePath("/dashboard/master/clothing-designs");
     return { success: true };
   } catch (e) {
