@@ -1,30 +1,39 @@
 import { prisma } from "@/lib/prisma";
 import { ClothingDesignsClient } from "./clothing-designs-client";
+import { unstable_cache } from "next/cache";
 
-export const dynamic = "force-dynamic";
+const getClothingDesignData = unstable_cache(
+  async () => {
+    const [designsRaw, items] = await Promise.all([
+      prisma.clothing_designs.findMany({
+        where: { rowStatus: true },
+        include: {
+          items_clothing_designs_itemIdToitems: {
+            select: { id: true, name: true, code: true },
+          },
+        },
+        orderBy: [{ isBuiltin: "desc" }, { name: "asc" }],
+      }),
+      prisma.item.findMany({
+        where: { rowStatus: true },
+        select: { id: true, code: true, name: true, defaultDesignId: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+
+    const designs = designsRaw.map((design) => ({
+      ...design,
+      item: design.items_clothing_designs_itemIdToitems,
+    }));
+
+    return { designs, items };
+  },
+  ["clothing-designs-page-data"],
+  { revalidate: 60, tags: ["clothing-designs-page-data"] }
+);
 
 export default async function ClothingDesignsPage() {
-  const [designsRaw, items] = await Promise.all([
-    prisma.clothing_designs.findMany({
-      where: { rowStatus: true },
-      include: {
-        items_clothing_designs_itemIdToitems: {
-          select: { id: true, name: true, code: true },
-        },
-      },
-      orderBy: [{ isBuiltin: "desc" }, { name: "asc" }],
-    }),
-    prisma.item.findMany({
-      where: { rowStatus: true },
-      select: { id: true, code: true, name: true, defaultDesignId: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
-
-  const designs = designsRaw.map((design) => ({
-    ...design,
-    item: design.items_clothing_designs_itemIdToitems,
-  }));
+  const { designs, items } = await getClothingDesignData();
 
   return (
     <div className="space-y-6">

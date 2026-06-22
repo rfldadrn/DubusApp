@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,9 @@ type ItemCharge = {
   amount: number;
   note?: string;
 };
+
+type SizeOption = { value: string; label: string };
+type ItemSizeField = { id: number; name: string; isMandatory: boolean };
 
 type TransactionItem = {
   itemId: number;
@@ -71,11 +74,43 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   const [availableSizes, setAvailableSizes] = useState<Record<number, Array<{ value: string; label: string }>>>({});
   const [sizeDialogOpen, setSizeDialogOpen] = useState(false);
   const [currentSizeItem, setCurrentSizeItem] = useState<{ index: number; itemId: number; itemName: string } | null>(null);
-  const [itemSizes, setItemSizes] = useState<Array<{ id: number; name: string; isMandatory: boolean }>>([]);
+  const [itemSizes, setItemSizes] = useState<ItemSizeField[]>([]);
+
+  const sizeOptionsCacheRef = useRef(new Map<string, SizeOption[]>());
+  const sizeOptionsPendingRef = useRef(new Map<string, Promise<SizeOption[]>>());
+  const itemSizeFieldsCacheRef = useRef(new Map<number, ItemSizeField[]>());
+  const itemSizeFieldsPendingRef = useRef(new Map<number, Promise<ItemSizeField[]>>());
 
   // Invoice dialog state
   const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
   const [invoiceData, setInvoiceData] = useState<any>(null);
+
+  const customerOptions = useMemo(
+    () =>
+      formData.customers.map((customer) => ({
+        value: customer.id.toString(),
+        label: `${customer.name}${customer.phoneNumber ? ` - ${customer.phoneNumber}` : ""}`,
+      })),
+    [formData.customers]
+  );
+
+  const itemOptions = useMemo(
+    () =>
+      formData.items.map((item) => ({
+        value: item.id.toString(),
+        label: `${item.name} - Rp ${item.customerPrice.toLocaleString("id-ID")}`,
+      })),
+    [formData.items]
+  );
+
+  const fabricOptions = useMemo(
+    () =>
+      formData.fabrics.map((fabric) => ({
+        value: fabric.id.toString(),
+        label: `${fabric.name} - Rp ${fabric.pricePerMeter.toLocaleString("id-ID")}/m`,
+      })),
+    [formData.fabrics]
+  );
 
   const addItem = () => {
     setItems([...items, { itemId: 0, fabricSource: "Customer", sewingPrice: 0, designId: undefined, useDefaultDesign: false, charges: [] }]);
@@ -151,15 +186,41 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
     return items.reduce((sum, item) => sum + calculateItemTotal(item), 0);
   };
 
-  const fetchAvailableSizes = async (custId: number, itmId: number) => {
-    try {
-      const response = await fetch(`/api/sizes/list?customerId=${custId}&itemId=${itmId}`);
-      const result = await response.json();
-      if (result.success) {
-        setAvailableSizes((prev) => ({ ...prev, [itmId]: result.data }));
+  const fetchAvailableSizes = async (custId: number, itmId: number, forceRefresh = false) => {
+    const cacheKey = `${custId}:${itmId}`;
+
+    if (!forceRefresh) {
+      const cached = sizeOptionsCacheRef.current.get(cacheKey);
+      if (cached) {
+        setAvailableSizes((prev) => ({ ...prev, [itmId]: cached }));
+        return;
       }
+    }
+
+    const pending = sizeOptionsPendingRef.current.get(cacheKey);
+    if (pending) {
+      const pendingData = await pending;
+      setAvailableSizes((prev) => ({ ...prev, [itmId]: pendingData }));
+      return;
+    }
+
+    const requestPromise = (async () => {
+      const response = await fetch(`/api/sizes/list?customerId=${custId}&itemId=${itmId}`, { cache: "force-cache" });
+      const result = await response.json();
+      if (!result.success) return [] as SizeOption[];
+      return result.data as SizeOption[];
+    })();
+
+    sizeOptionsPendingRef.current.set(cacheKey, requestPromise);
+
+    try {
+      const data = await requestPromise;
+      sizeOptionsCacheRef.current.set(cacheKey, data);
+      setAvailableSizes((prev) => ({ ...prev, [itmId]: data }));
     } catch (error) {
       console.error("Failed to fetch sizes:", error);
+    } finally {
+      sizeOptionsPendingRef.current.delete(cacheKey);
     }
   };
 
@@ -177,39 +238,68 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
     const selectedItem = formData.items.find((i) => i.id === item.itemId);
     if (!selectedItem) return;
 
-    // Fetch item sizes
     try {
-      const response = await fetch(`/api/items/sizes?itemId=${item.itemId}`);
-      const result = await response.json();
-      if (result.success) {
-        setItemSizes(result.data);
+      const cachedItemSizes = itemSizeFieldsCacheRef.current.get(item.itemId);
+      if (cachedItemSizes) {
+        setItemSizes(cachedItemSizes);
         setCurrentSizeItem({ index, itemId: item.itemId, itemName: selectedItem.name });
         setSizeDialogOpen(true);
+        return;
       }
+
+      const pendingItemSizes = itemSizeFieldsPendingRef.current.get(item.itemId);
+      if (pendingItemSizes) {
+        const pendingData = await pendingItemSizes;
+        setItemSizes(pendingData);
+        setCurrentSizeItem({ index, itemId: item.itemId, itemName: selectedItem.name });
+        setSizeDialogOpen(true);
+        return;
+      }
+
+      const requestPromise = (async () => {
+        const response = await fetch(`/api/items/sizes?itemId=${item.itemId}`, { cache: "force-cache" });
+        const result = await response.json();
+        if (!result.success) return [] as ItemSizeField[];
+        return result.data as ItemSizeField[];
+      })();
+
+      itemSizeFieldsPendingRef.current.set(item.itemId, requestPromise);
+      const data = await requestPromise;
+
+      itemSizeFieldsCacheRef.current.set(item.itemId, data);
+      setItemSizes(data);
+      setCurrentSizeItem({ index, itemId: item.itemId, itemName: selectedItem.name });
+      setSizeDialogOpen(true);
     } catch (error) {
       toast({
         title: "Error",
         description: "Gagal mengambil data ukuran",
         variant: "destructive",
       });
+    } finally {
+      itemSizeFieldsPendingRef.current.delete(item.itemId);
     }
   };
 
   const handleSizeAdded = () => {
     if (currentSizeItem && customerId) {
-      fetchAvailableSizes(Number(customerId), currentSizeItem.itemId);
+      fetchAvailableSizes(Number(customerId), currentSizeItem.itemId, true);
     }
   };
 
   // Fetch sizes when customer changes
   useEffect(() => {
-    if (customerId) {
-      items.forEach((item) => {
-        if (item.itemId > 0) {
-          fetchAvailableSizes(Number(customerId), item.itemId);
-        }
-      });
+    if (!customerId) {
+      setAvailableSizes({});
+      return;
     }
+
+    setAvailableSizes({});
+
+    const uniqueItemIds = Array.from(new Set(items.filter((item) => item.itemId > 0).map((item) => item.itemId)));
+    uniqueItemIds.forEach((itemId) => {
+      fetchAvailableSizes(Number(customerId), itemId);
+    });
   }, [customerId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -355,10 +445,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
           <SearchableSelect
             value={customerId}
             onValueChange={setCustomerId}
-            options={formData.customers.map(c => ({ 
-              value: c.id.toString(), 
-              label: `${c.name}${c.phoneNumber ? ` - ${c.phoneNumber}` : ''}` 
-            }))}
+            options={customerOptions}
             placeholder="Pilih Pelanggan"
             searchPlaceholder="Cari pelanggan..."
           />
@@ -446,10 +533,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
                   onValueChange={(value) => {
                     updateItem(index, "itemId", Number(value));
                   }}
-                  options={formData.items.map(itemOption => ({
-                    value: itemOption.id.toString(),
-                    label: `${itemOption.name} - Rp ${itemOption.customerPrice.toLocaleString("id-ID")}`
-                  }))}
+                  options={itemOptions}
                   placeholder="Pilih Item"
                   searchPlaceholder="Cari item..."
                 />
@@ -497,10 +581,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
                     <SearchableSelect
                       value={item.fabricId?.toString() || ""}
                       onValueChange={(value) => updateItem(index, "fabricId", Number(value))}
-                      options={formData.fabrics.map(fabric => ({
-                        value: fabric.id.toString(),
-                        label: `${fabric.name} - Rp ${fabric.pricePerMeter.toLocaleString("id-ID")}/m`
-                      }))}
+                      options={fabricOptions}
                       placeholder="Pilih Kain"
                       searchPlaceholder="Cari kain..."
                     />

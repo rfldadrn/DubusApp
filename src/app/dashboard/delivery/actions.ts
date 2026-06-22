@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { normalizePhoneNumber } from "@/lib/phone";
 
 function getTodayDeliveryCodePrefix() {
@@ -29,96 +29,134 @@ async function generateDeliveryCode() {
   return `${prefix}${String(count + 1).padStart(3, "0")}`;
 }
 
-export async function getDeliveryProjects() {
-  const projects = await prisma.agencyProject.findMany({
-    where: { rowStatus: true },
-    include: {
-      agency: true,
-      _count: {
-        select: {
-          deliveries: true,
-          transactions: true,
+const getDeliveryProjectsCached = unstable_cache(
+  async () => {
+    const projects = await prisma.agencyProject.findMany({
+      where: { rowStatus: true },
+      include: {
+        agency: true,
+        _count: {
+          select: {
+            deliveries: true,
+            transactions: true,
+          },
         },
       },
-    },
-    orderBy: [{ agency: { name: "asc" } }, { name: "asc" }],
-  });
+      orderBy: [{ agency: { name: "asc" } }, { name: "asc" }],
+    });
 
-  return projects.map((project) => ({
-    id: project.id,
-    projectCode: project.projectCode,
-    projectName: project.name,
-    agencyName: project.agency.name,
-    deliveryCount: project._count.deliveries,
-    transactionCount: project._count.transactions,
-  }));
+    return projects.map((project) => ({
+      id: project.id,
+      projectCode: project.projectCode,
+      projectName: project.name,
+      agencyName: project.agency.name,
+      deliveryCount: project._count.deliveries,
+      transactionCount: project._count.transactions,
+    }));
+  },
+  ["delivery-projects-data"],
+  { revalidate: 60, tags: ["delivery-projects-data"] }
+);
+
+const getDeliveryHistoryCached = unstable_cache(
+  async () => {
+    const deliveries = await prisma.delivery.findMany({
+      include: {
+        agencyProject: {
+          include: { agency: true },
+        },
+        handledByUser: {
+          select: {
+            fullName: true,
+          },
+        },
+        _count: {
+          select: { items: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+
+    return deliveries.map((delivery) => ({
+      id: delivery.id,
+      deliveryCode: delivery.deliveryCode,
+      projectName: delivery.agencyProject.name,
+      agencyName: delivery.agencyProject.agency.name,
+      deliveryDate: delivery.deliveryDate.toISOString(),
+      status: delivery.status,
+      destination: delivery.destination,
+      recipientName: delivery.recipientName,
+      recipientPhone: delivery.recipientPhone,
+      itemCount: delivery._count.items,
+      handledBy: delivery.handledByUser.fullName,
+    }));
+  },
+  ["delivery-history-data"],
+  { revalidate: 30, tags: ["delivery-history-data"] }
+);
+
+export async function getDeliveryProjects() {
+  return getDeliveryProjectsCached();
 }
 
 export async function getReadyItemsByProject(projectId: number) {
-  const items = await prisma.transactionItem.findMany({
-    where: {
-      rowStatus: true,
-      transaction: {
-        rowStatus: true,
-        agencyProjectId: projectId,
-      },
-      statusItem: {
-        code: "OK",
-      },
-      deliveryItems: {
-        none: {},
-      },
-    },
-    include: {
-      item: true,
-      transaction: {
-        include: {
-          customer: true,
+  const getReadyItemsCached = unstable_cache(
+    async () => {
+      const items = await prisma.transactionItem.findMany({
+        where: {
+          rowStatus: true,
+          transaction: {
+            rowStatus: true,
+            agencyProjectId: projectId,
+          },
+          statusItem: {
+            code: "OK",
+          },
+          deliveryItems: {
+            none: {},
+          },
         },
-      },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+        include: {
+          item: {
+            select: {
+              name: true,
+            },
+          },
+          transaction: {
+            select: {
+              id: true,
+              transactionCode: true,
+              customer: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "asc" },
+      });
 
-  return items.map((item) => ({
-    id: item.id,
-    transactionId: item.transactionId,
-    transactionCode: item.transaction.transactionCode,
-    customerName: item.transaction.customer.name,
-    itemName: item.item.name,
-    modelDescription: item.modelDescription,
-    targetDate: item.targetDate?.toISOString() || null,
-  }));
+      return items.map((item) => ({
+        id: item.id,
+        transactionId: item.transactionId,
+        transactionCode: item.transaction.transactionCode,
+        customerName: item.transaction.customer.name,
+        itemName: item.item.name,
+        modelDescription: item.modelDescription,
+        targetDate: item.targetDate?.toISOString() || null,
+      }));
+    },
+    [`delivery-ready-items-${projectId}`],
+    { revalidate: 15, tags: [`delivery-ready-items-${projectId}`] }
+  );
+
+  return getReadyItemsCached();
 }
 
 export async function getDeliveryHistory() {
-  const deliveries = await prisma.delivery.findMany({
-    include: {
-      agencyProject: {
-        include: { agency: true },
-      },
-      handledByUser: true,
-      _count: {
-        select: { items: true },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-
-  return deliveries.map((delivery) => ({
-    id: delivery.id,
-    deliveryCode: delivery.deliveryCode,
-    projectName: delivery.agencyProject.name,
-    agencyName: delivery.agencyProject.agency.name,
-    deliveryDate: delivery.deliveryDate.toISOString(),
-    status: delivery.status,
-    destination: delivery.destination,
-    recipientName: delivery.recipientName,
-    recipientPhone: delivery.recipientPhone,
-    itemCount: delivery._count.items,
-    handledBy: delivery.handledByUser.fullName,
-  }));
+  return getDeliveryHistoryCached();
 }
 
 async function updateTransactionCompletionIfPicked(transactionId: number) {
@@ -268,6 +306,12 @@ export async function createDelivery(data: {
     revalidatePath("/dashboard/production");
     revalidatePath("/dashboard/transactions");
     revalidatePath("/dashboard/reports");
+    revalidateTag("delivery-projects-data");
+    revalidateTag("delivery-history-data");
+    revalidateTag(`delivery-ready-items-${data.projectId}`);
+    revalidateTag("production-page-data");
+    revalidateTag("transactions-page-data");
+    revalidateTag("dashboard-page-data");
 
     return {
       success: true,

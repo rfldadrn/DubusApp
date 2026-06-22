@@ -8,73 +8,134 @@ import { id as localeId } from "date-fns/locale";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { TransactionDetailClient } from "./transaction-detail-client";
-
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
+import { unstable_cache } from "next/cache";
 
 function toPlainObject<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function getTransactionDetail(transactionId: number) {
+  return unstable_cache(
+    async () => {
+      return prisma.transaction.findUnique({
+        where: { id: transactionId },
+        select: {
+          id: true,
+          transactionCode: true,
+          transactionDate: true,
+          completionDate: true,
+          note: true,
+          totalAmount: true,
+          paymentStatus: true,
+          customer: {
+            select: {
+              name: true,
+              phoneNumber: true,
+            },
+          },
+          statusTransaction: {
+            select: {
+              code: true,
+              name: true,
+              colorSlug: true,
+            },
+          },
+          items: {
+            select: {
+              id: true,
+              fabricSource: true,
+              sewingPrice: true,
+              fabricPrice: true,
+              fabricMeters: true,
+              modelDescription: true,
+              targetDate: true,
+              statusItem: {
+                select: {
+                  code: true,
+                  name: true,
+                  colorSlug: true,
+                },
+              },
+              item: {
+                select: {
+                  name: true,
+                },
+              },
+              fabric: {
+                select: {
+                  name: true,
+                },
+              },
+              charges: {
+                select: {
+                  label: true,
+                  amount: true,
+                },
+              },
+            },
+          },
+          payments: {
+            select: {
+              id: true,
+              amount: true,
+              balanceAfter: true,
+              paidAt: true,
+              createdAt: true,
+              note: true,
+              paymentType: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+              wallet: {
+                select: {
+                  id: true,
+                  name: true,
+                  walletType: true,
+                },
+              },
+            },
+            orderBy: { paidAt: "desc" },
+          },
+        },
+      });
+    },
+    [`transaction-detail-${transactionId}`],
+    {
+      revalidate: 20,
+      tags: [`transaction-detail-${transactionId}`],
+    }
+  )();
+}
+
+const getPaymentMetadata = unstable_cache(
+  async () => {
+    const [paymentTypes, wallets] = await Promise.all([
+      prisma.paymentType.findMany({
+        where: { rowStatus: true },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.wallet.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, walletType: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+
+    return { paymentTypes, wallets };
+  },
+  ["transaction-payment-metadata"],
+  { revalidate: 120, tags: ["transaction-payment-metadata"] }
+);
+
 export default async function TransactionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const transactionId = Number(id);
-  const [transactionRaw, paymentTypes, wallets] = await Promise.all([
-    prisma.transaction.findUnique({
-      where: { id: transactionId },
-      include: {
-        customer: true,
-        statusTransaction: true,
-        items: {
-          include: {
-            item: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-              },
-            },
-            statusItem: true,
-            fabric: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            headerSizeCustomer: true,
-            charges: true,
-          },
-        },
-        payments: {
-          include: {
-            paymentType: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-            wallet: {
-              select: {
-                id: true,
-                name: true,
-                walletType: true,
-              },
-            },
-          },
-          orderBy: { paidAt: "desc" },
-        },
-      },
-    }),
-    prisma.paymentType.findMany({
-      where: { rowStatus: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.wallet.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, walletType: true },
-      orderBy: { name: "asc" },
-    }),
+  const [transactionRaw, paymentMetadata] = await Promise.all([
+    getTransactionDetail(transactionId),
+    getPaymentMetadata(),
   ]);
 
   if (!transactionRaw) return notFound();
@@ -94,9 +155,14 @@ export default async function TransactionDetailPage({ params }: { params: Promis
       })),
     })),
     payments: transactionRaw.payments.map(payment => ({
-      ...payment,
+      id: payment.id,
       amount: Number(payment.amount),
       balanceAfter: Number(payment.balanceAfter),
+      paidAt: payment.paidAt,
+      createdAt: payment.createdAt,
+      note: payment.note,
+      paymentType: payment.paymentType,
+      wallet: payment.wallet,
     })),
   };
 
@@ -111,9 +177,11 @@ export default async function TransactionDetailPage({ params }: { params: Promis
   const totalPaid = transaction.payments.reduce((sum: number, p: any) => sum + p.amount, 0);
   const remaining = grandTotal - totalPaid;
 
-  const transactionPlain = toPlainObject(transaction);
-  const paymentTypesPlain = toPlainObject(paymentTypes);
-  const walletsPlain = toPlainObject(wallets);
+  const payload = toPlainObject({
+    transaction,
+    paymentTypes: paymentMetadata.paymentTypes,
+    wallets: paymentMetadata.wallets,
+  });
 
   return (
     <div className="space-y-6">
@@ -124,9 +192,9 @@ export default async function TransactionDetailPage({ params }: { params: Promis
         </div>
         <div className="flex gap-2">
           <TransactionDetailClient
-            transaction={transactionPlain}
-            paymentTypes={paymentTypesPlain}
-            wallets={walletsPlain}
+            transaction={payload.transaction}
+            paymentTypes={payload.paymentTypes}
+            wallets={payload.wallets}
           />
           <Link href={`/dashboard/transactions/${transaction.id}/edit`}>
             <Button variant="outline">Edit Transaksi</Button>

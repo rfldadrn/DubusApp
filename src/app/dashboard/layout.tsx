@@ -5,9 +5,6 @@ import { SessionActivityTracker } from "@/components/shared/session-activity-tra
 import { prisma } from "@/lib/prisma";
 import { unstable_cache } from "next/cache";
 
-// Force dynamic rendering to prevent database access during build
-export const dynamic = 'force-dynamic';
-
 function getRoleMenus(roleId: number) {
   return unstable_cache(
     async () => {

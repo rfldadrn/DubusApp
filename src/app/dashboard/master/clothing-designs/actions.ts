@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
 
 const designSchema = z.object({
@@ -97,6 +97,7 @@ export async function createClothingDesign(input: unknown) {
       },
     });
     revalidatePath("/dashboard/master/clothing-designs");
+    revalidateTag("clothing-designs-page-data");
     return { success: true };
   } catch (e) {
     console.error("createClothingDesign error", e);
@@ -134,6 +135,7 @@ export async function updateClothingDesign(id: number, input: unknown) {
       },
     });
     revalidatePath("/dashboard/master/clothing-designs");
+    revalidateTag("clothing-designs-page-data");
     return { success: true };
   } catch (e) {
     console.error("updateClothingDesign error", e);
@@ -150,6 +152,7 @@ export async function deleteClothingDesign(id: number) {
     // Soft delete supaya tidak break transaksi lama yang mereferensikan design ini.
     await prisma.clothing_designs.update({ where: { id }, data: { rowStatus: false } });
     revalidatePath("/dashboard/master/clothing-designs");
+    revalidateTag("clothing-designs-page-data");
     return { success: true };
   } catch (e) {
     console.error("deleteClothingDesign error", e);
@@ -163,6 +166,7 @@ export async function setItemDefaultDesign(itemId: number, designId: number | nu
     await prisma.item.update({ where: { id: itemId }, data: { defaultDesignId: designId } });
     revalidatePath("/dashboard/master/clothing-designs");
     revalidatePath("/dashboard/master");
+    revalidateTag("clothing-designs-page-data");
     return { success: true };
   } catch (e) {
     console.error("setItemDefaultDesign error", e);

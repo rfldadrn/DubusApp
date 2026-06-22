@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Download, Send } from "lucide-react";
-import { generateInvoicePDF, generateWhatsAppMessage, downloadPDF, sendWhatsApp } from "@/lib/invoice";
 
 type ItemCharge = {
   label: string;
@@ -49,9 +48,10 @@ export function InvoiceDialog({ open, onOpenChange, invoiceData }: InvoiceDialog
 
   if (!invoiceData) return null;
 
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     setDownloading(true);
     try {
+      const { generateInvoicePDF, downloadPDF } = await import("@/lib/invoice");
       const doc = generateInvoicePDF(invoiceData);
       downloadPDF(doc, `Nota-${invoiceData.transactionCode}.pdf`);
     } catch (error) {
@@ -61,11 +61,12 @@ export function InvoiceDialog({ open, onOpenChange, invoiceData }: InvoiceDialog
     }
   };
 
-  const handleSendWhatsApp = () => {
+  const handleSendWhatsApp = async () => {
     if (!invoiceData.customerPhone) {
       alert("Nomor telepon pelanggan tidak tersedia");
       return;
     }
+    const { generateWhatsAppMessage, sendWhatsApp } = await import("@/lib/invoice");
     const message = generateWhatsAppMessage(invoiceData);
     sendWhatsApp(invoiceData.customerPhone, message);
   };
@@ -137,14 +138,14 @@ export function InvoiceDialog({ open, onOpenChange, invoiceData }: InvoiceDialog
           </div>
 
           <p className="text-xs text-muted-foreground text-center">
-            Unduh nota PDF atau kirim via WhatsApp
+            Buka preview PDF untuk cetak atau kirim via WhatsApp
           </p>
         </div>
 
         <DialogFooter className="flex flex-col sm:flex-row gap-2">
           <Button variant="outline" onClick={handleDownloadPDF} disabled={downloading} className="flex-1">
             <Download className="h-4 w-4 mr-2" />
-            {downloading ? "Mengunduh..." : "Unduh PDF"}
+            {downloading ? "Membuka..." : "Preview PDF"}
           </Button>
           {invoiceData.customerPhone && (
             <Button onClick={handleSendWhatsApp} className="flex-1 bg-green-600 hover:bg-green-700">

@@ -24,12 +24,20 @@ export async function GET(request: NextRequest) {
         itemId: Number(itemId),
         rowStatus: true,
       },
+      select: {
+        id: true,
+        name: true,
+        isMandatory: true,
+      },
       orderBy: {
         sortOrder: "asc",
       },
     });
 
-    return NextResponse.json({ success: true, data: itemSizes });
+    const response = NextResponse.json({ success: true, data: itemSizes });
+    response.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
+
+    return response;
   } catch (error) {
     console.error("Fetch item sizes error:", error);
     return NextResponse.json(

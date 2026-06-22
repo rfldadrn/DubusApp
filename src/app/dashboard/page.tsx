@@ -3,11 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { differenceInDays } from "date-fns";
 import { DashboardClient } from "./dashboard-client";
 import { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 
-// Force dynamic rendering
-export const dynamic = "force-dynamic";
-
-async function getDashboardData() {
+const getDashboardData = unstable_cache(async () => {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -205,7 +203,7 @@ async function getDashboardData() {
     productionByStatus: Object.values(statusCounts),
     revenueByMonth: Object.values(revenueByMonth),
   };
-}
+}, ["dashboard-page-data"], { revalidate: 30, tags: ["dashboard-page-data"] });
 
 export default async function DashboardPage() {
   const session = await auth();

@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertCircle, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
 import { importRegularCustomersFromExcel } from "./actions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -27,14 +26,20 @@ export function CustomersImportDialog() {
       ["Budi Hartono", "083456789012", "L"],
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet(template);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Template Import Pelanggan");
+    void (async () => {
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.aoa_to_sheet(template);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Template Import Pelanggan");
 
-    ws["!cols"] = [{ wch: 24 }, { wch: 18 }, { wch: 22 }];
+      ws["!cols"] = [{ wch: 24 }, { wch: 18 }, { wch: 22 }];
 
-    XLSX.writeFile(wb, "Template_Import_Pelanggan_Reguler.xlsx");
-    toast.success("Template berhasil diunduh");
+      XLSX.writeFile(wb, "Template_Import_Pelanggan_Reguler.xlsx");
+      toast.success("Template berhasil diunduh");
+    })().catch((error) => {
+      console.error("Download template error:", error);
+      toast.error("Gagal mengunduh template");
+    });
   };
 
   const handleImport = async () => {
@@ -47,6 +52,7 @@ export function CustomersImportDialog() {
     setImportResult(null);
 
     try {
+      const XLSX = await import("xlsx");
       const data = await importFile.arrayBuffer();
       const workbook = XLSX.read(data);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];

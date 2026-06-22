@@ -2,8 +2,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import { TransactionEditForm } from "./transaction-edit-form";
+import { unstable_cache } from "next/cache";
 
-async function getFormData() {
+const getFormData = unstable_cache(async () => {
   const [customersRaw, itemsRaw, fabricsRaw, statusTransactions, statusItems, paymentTypes, wallets, designs] = await Promise.all([
     prisma.customer.findMany({
       where: { rowStatus: true },
@@ -59,7 +60,7 @@ async function getFormData() {
   }));
 
   return { customers, items, fabrics, statusTransactions, statusItems, paymentTypes, wallets, designs };
-}
+}, ["transaction-form-master-data"], { revalidate: 120, tags: ["transaction-create-form-data"] });
 
 async function getTransaction(id: number) {
   const transaction = await prisma.transaction.findUnique({
@@ -82,16 +83,6 @@ async function getTransaction(id: number) {
           charges: true,
         },
       },
-      payments: {
-        include: {
-          paymentType: {
-            select: { id: true, name: true }
-          },
-          wallet: {
-            select: { id: true, name: true }
-          }
-        }
-      }
     },
   });
 
@@ -112,11 +103,6 @@ async function getTransaction(id: number) {
         ...charge,
         amount: Number(charge.amount),
       })),
-    })),
-    payments: transaction.payments.map(payment => ({
-      ...payment,
-      amount: Number(payment.amount),
-      balanceAfter: Number(payment.balanceAfter),
     })),
   };
 }

@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
       include: {
         itemSizeCustomers: {
           where: { rowStatus: true },
-          include: {
+          select: {
+            size: true,
             itemSize: {
               select: {
                 name: true,
@@ -43,7 +44,6 @@ export async function GET(request: NextRequest) {
             },
           },
         },
-        item: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -68,7 +68,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ success: true, data: options });
+    const response = NextResponse.json({ success: true, data: options });
+    response.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=90");
+
+    return response;
   } catch (error) {
     console.error("List sizes error:", error);
     return NextResponse.json(

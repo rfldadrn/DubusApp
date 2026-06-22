@@ -2,8 +2,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeliveryClient } from "./delivery-client";
 import { getDeliveryProjects, getDeliveryHistory } from "./actions";
 
-export const dynamic = "force-dynamic";
-
 export default async function DeliveryPage() {
   const [projects, history] = await Promise.all([getDeliveryProjects(), getDeliveryHistory()]);
 

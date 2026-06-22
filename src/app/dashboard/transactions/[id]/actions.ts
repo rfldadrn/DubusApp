@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 /**
  * Pickup items - mark selected items as "DIAMBIL" (picked up)
@@ -190,6 +190,10 @@ export async function pickupItems(data: {
     revalidatePath("/dashboard/finance");
     revalidatePath("/dashboard/finance/create");
     revalidatePath("/dashboard/finance/cashbook");
+    revalidateTag(`transaction-detail-${data.transactionId}`);
+    revalidateTag("transactions-page-data");
+    revalidateTag("production-page-data");
+    revalidateTag("dashboard-page-data");
     return {
       success: true,
       allPickedUp,
@@ -276,6 +280,10 @@ export async function cancelTransaction(data: {
     revalidatePath(`/dashboard/transactions/${data.transactionId}`);
     revalidatePath("/dashboard/transactions");
     revalidatePath("/dashboard/production");
+    revalidateTag(`transaction-detail-${data.transactionId}`);
+    revalidateTag("transactions-page-data");
+    revalidateTag("production-page-data");
+    revalidateTag("dashboard-page-data");
     return {
       success: true,
       hasPaidAmount: totalPaid > 0,
