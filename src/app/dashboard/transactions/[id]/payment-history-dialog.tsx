@@ -11,7 +11,6 @@ type Payment = {
   amount: number;
   note?: string | null;
   paidAt?: Date | string;
-  createdAt?: Date | string;
   paymentType: {
     name: string;
   };
@@ -57,7 +56,7 @@ export function PaymentHistoryDialog({ open, onOpenChange, payments }: PaymentHi
                 {payments.map((payment) => (
                   <TableRow key={payment.id}>
                     <TableCell>
-                      {payment.paidAt ? format(new Date(payment.paidAt), "dd MMM yyyy, HH:mm", { locale: localeId }) : payment.createdAt ? format(new Date(payment.createdAt), "dd MMM yyyy, HH:mm", { locale: localeId }) : "-"}
+                      {payment.paidAt ? format(new Date(payment.paidAt), "dd MMM yyyy, HH:mm", { locale: localeId }) : "-"}
                     </TableCell>
                     <TableCell className="font-semibold">
                       Rp {Number(payment.amount).toLocaleString("id-ID")}

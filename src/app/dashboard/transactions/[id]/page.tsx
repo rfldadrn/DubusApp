@@ -80,7 +80,6 @@ function getTransactionDetail(transactionId: number) {
               amount: true,
               balanceAfter: true,
               paidAt: true,
-              createdAt: true,
               note: true,
               paymentType: {
                 select: {
@@ -159,7 +158,6 @@ export default async function TransactionDetailPage({ params }: { params: Promis
       amount: Number(payment.amount),
       balanceAfter: Number(payment.balanceAfter),
       paidAt: payment.paidAt,
-      createdAt: payment.createdAt,
       note: payment.note,
       paymentType: payment.paymentType,
       wallet: payment.wallet,
