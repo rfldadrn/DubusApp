@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag, unstable_cache } from "next/cache";
 import { normalizePhoneNumber } from "@/lib/phone";
+import { CACHE_TAGS, deliveryReadyItemsTag } from "@/lib/cache-tags";
 
 function getTodayDeliveryCodePrefix() {
   const now = new Date();
@@ -54,8 +55,8 @@ const getDeliveryProjectsCached = unstable_cache(
       transactionCount: project._count.transactions,
     }));
   },
-  ["delivery-projects-data"],
-  { revalidate: 60, tags: ["delivery-projects-data"] }
+  [CACHE_TAGS.deliveryProjects],
+  { revalidate: 60, tags: [CACHE_TAGS.deliveryProjects] }
 );
 
 const getDeliveryHistoryCached = unstable_cache(
@@ -92,8 +93,8 @@ const getDeliveryHistoryCached = unstable_cache(
       handledBy: delivery.handledByUser.fullName,
     }));
   },
-  ["delivery-history-data"],
-  { revalidate: 30, tags: ["delivery-history-data"] }
+  [CACHE_TAGS.deliveryHistory],
+  { revalidate: 30, tags: [CACHE_TAGS.deliveryHistory] }
 );
 
 export async function getDeliveryProjects() {
@@ -148,8 +149,8 @@ export async function getReadyItemsByProject(projectId: number) {
         targetDate: item.targetDate?.toISOString() || null,
       }));
     },
-    [`delivery-ready-items-${projectId}`],
-    { revalidate: 15, tags: [`delivery-ready-items-${projectId}`] }
+    [deliveryReadyItemsTag(projectId)],
+    { revalidate: 15, tags: [deliveryReadyItemsTag(projectId)] }
   );
 
   return getReadyItemsCached();
@@ -306,12 +307,12 @@ export async function createDelivery(data: {
     revalidatePath("/dashboard/production");
     revalidatePath("/dashboard/transactions");
     revalidatePath("/dashboard/reports");
-    revalidateTag("delivery-projects-data");
-    revalidateTag("delivery-history-data");
-    revalidateTag(`delivery-ready-items-${data.projectId}`);
-    revalidateTag("production-page-data");
-    revalidateTag("transactions-page-data");
-    revalidateTag("dashboard-page-data");
+    revalidateTag(CACHE_TAGS.deliveryProjects);
+    revalidateTag(CACHE_TAGS.deliveryHistory);
+    revalidateTag(deliveryReadyItemsTag(data.projectId));
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.dashboard);
 
     return {
       success: true,

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useRouter } from "next/navigation";
 import { WorkflowTracker, WorkflowStep } from "./workflow-tracker";
 import { LoadingOverlay } from "./loading-overlay";
 import { updateItemStatus, getBonData } from "@/app/dashboard/production/actions";
@@ -38,6 +39,7 @@ const REQUIRES_DATE = ["POTONG", "JAHIT", "GOSOK", "PERMAK", "DIAMBIL", "OK"];
 const IRONING_STATUS = ["GOSOK"];
 
 export function WorkflowTrackerDialog({ transactionItem, allStatuses, employees = [] }: WorkflowTrackerDialogProps) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<typeof allStatuses[0] | null>(null);
@@ -98,7 +100,7 @@ export function WorkflowTrackerDialog({ transactionItem, allStatuses, employees 
         toast.success("Status berhasil diupdate");
         setOpen(false);
         setShowAssignForm(false);
-        window.location.reload();
+        router.refresh();
       } else {
         toast.error(result.error || "Gagal mengupdate status");
       }

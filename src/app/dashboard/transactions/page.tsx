@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { TransactionTable } from "./transaction-table";
 import { unstable_cache } from "next/cache";
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 const getTransactions = unstable_cache(async () => {
   const transactions = await prisma.transaction.findMany({
@@ -46,7 +47,7 @@ const getTransactions = unstable_cache(async () => {
     statusName: t.statusTransaction.name,
     type: t.type,
   }));
-}, ["transactions-page-data"], { revalidate: 20, tags: ["transactions-page-data"] });
+}, [CACHE_TAGS.transactions], { revalidate: 20, tags: [CACHE_TAGS.transactions] });
 
 export default async function TransactionsPage() {
   const transactions = await getTransactions();

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { CACHE_TAGS, transactionDetailTag } from "@/lib/cache-tags";
 
 /**
  * Pickup items - mark selected items as "DIAMBIL" (picked up)
@@ -190,10 +191,10 @@ export async function pickupItems(data: {
     revalidatePath("/dashboard/finance");
     revalidatePath("/dashboard/finance/create");
     revalidatePath("/dashboard/finance/cashbook");
-    revalidateTag(`transaction-detail-${data.transactionId}`);
-    revalidateTag("transactions-page-data");
-    revalidateTag("production-page-data");
-    revalidateTag("dashboard-page-data");
+    revalidateTag(transactionDetailTag(data.transactionId));
+    revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.dashboard);
     return {
       success: true,
       allPickedUp,
@@ -280,10 +281,10 @@ export async function cancelTransaction(data: {
     revalidatePath(`/dashboard/transactions/${data.transactionId}`);
     revalidatePath("/dashboard/transactions");
     revalidatePath("/dashboard/production");
-    revalidateTag(`transaction-detail-${data.transactionId}`);
-    revalidateTag("transactions-page-data");
-    revalidateTag("production-page-data");
-    revalidateTag("dashboard-page-data");
+    revalidateTag(transactionDetailTag(data.transactionId));
+    revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.dashboard);
     return {
       success: true,
       hasPaidAmount: totalPaid > 0,

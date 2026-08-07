@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 type ItemChargeInput = {
   label: string;
@@ -356,8 +357,8 @@ export async function createTransaction(data: TransactionInput) {
 
     revalidatePath("/dashboard/transactions");
     revalidatePath("/dashboard/production");
-    revalidateTag("transactions-page-data");
-    revalidateTag("production-page-data");
+    revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.production);
     return { 
       success: true, 
       data: {

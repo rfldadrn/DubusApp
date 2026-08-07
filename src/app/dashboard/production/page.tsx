@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { differenceInDays } from "date-fns";
 import { ProductionTable } from "./production-table";
 import { unstable_cache } from "next/cache";
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 const getProductionData = unstable_cache(async () => {
   const now = new Date();
@@ -148,7 +149,7 @@ const getProductionData = unstable_cache(async () => {
     completedCount,
     urgentCount: Math.max(urgentCount, urgent.length),
   };
-}, ["production-page-data"], { revalidate: 20, tags: ["production-page-data"] });
+}, [CACHE_TAGS.production], { revalidate: 20, tags: [CACHE_TAGS.production] });
 
 export default async function ProductionPage() {
   const data = await getProductionData();

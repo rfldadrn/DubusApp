@@ -4,8 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { normalizePhoneNumber } from "@/lib/phone";
+import { CACHE_TAGS } from "@/lib/cache-tags";
+
+async function requireAuthSession() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+  return session;
+}
 
 export async function getAgencies() {
+  await requireAuthSession();
   const agencies = await prisma.agency.findMany({
     where: { rowStatus: true },
     include: {
@@ -40,8 +50,7 @@ export async function getAgencies() {
 
 export async function createAgency(data: { agencyCode: string; name: string; description?: string }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+    const session = await requireAuthSession();
 
     await prisma.agency.create({
       data: {
@@ -62,8 +71,7 @@ export async function createAgency(data: { agencyCode: string; name: string; des
 
 export async function updateAgency(id: number, data: { agencyCode: string; name: string; description?: string }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+    await requireAuthSession();
 
     await prisma.agency.update({
       where: { id },
@@ -80,8 +88,7 @@ export async function updateAgency(id: number, data: { agencyCode: string; name:
 
 export async function deleteAgency(id: number) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+    await requireAuthSession();
 
     const count = await prisma.customer.count({ where: { agencyId: id } });
     if (count > 0) return { success: false, error: `Agency memiliki ${count} pelanggan. Tidak bisa dihapus.` };
@@ -103,8 +110,7 @@ export async function createProject(data: {
   targetDate?: string;
 }) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+    await requireAuthSession();
 
     // Self-heal sequence drift (common after manual import/reset)
     await prisma.$executeRawUnsafe(
@@ -144,8 +150,7 @@ export async function createProject(data: {
 
 export async function importCustomersToAgency(agencyId: number, customers: { name: string; phoneNumber?: string; gender?: "Laki_laki" | "Perempuan" }[]) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+    await requireAuthSession();
 
     await prisma.$executeRawUnsafe(
       "SELECT setval(pg_get_serial_sequence('customers', 'id'), COALESCE((SELECT MAX(id) FROM customers), 0) + 1, false)"
@@ -189,8 +194,7 @@ export async function importAgencyCustomersFromExcel(
   rows: ImportRow[]
 ) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+    await requireAuthSession();
 
     // Check for duplicates in database and same-file duplicates
     const duplicates: DuplicateInfo[] = [];
@@ -282,6 +286,7 @@ export async function importAgencyCustomersFromExcel(
     revalidatePath("/dashboard/agency");
     revalidatePath("/dashboard/customers");
     revalidateTag("transaction-create-form-data");
+    revalidateTag(CACHE_TAGS.dashboard);
     return {
       success: true,
       imported: importedCount,

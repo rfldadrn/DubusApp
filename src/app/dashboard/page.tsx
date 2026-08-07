@@ -4,6 +4,7 @@ import { differenceInDays } from "date-fns";
 import { DashboardClient } from "./dashboard-client";
 import { Prisma } from "@prisma/client";
 import { unstable_cache } from "next/cache";
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 const getDashboardData = unstable_cache(async () => {
   const now = new Date();
@@ -203,7 +204,7 @@ const getDashboardData = unstable_cache(async () => {
     productionByStatus: Object.values(statusCounts),
     revenueByMonth: Object.values(revenueByMonth),
   };
-}, ["dashboard-page-data"], { revalidate: 30, tags: ["dashboard-page-data"] });
+}, [CACHE_TAGS.dashboard], { revalidate: 30, tags: [CACHE_TAGS.dashboard] });
 
 export default async function DashboardPage() {
   const session = await auth();

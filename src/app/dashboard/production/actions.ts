@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { CACHE_TAGS } from "@/lib/cache-tags";
 
 interface StatusUpdateExtra {
   notes?: string;
@@ -13,6 +14,13 @@ interface StatusUpdateExtra {
 }
 
 const EMPLOYEE_REQUIRED_CODES = ["POTONG", "JAHIT", "PERMAK"] as const;
+
+async function requireAuth() {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("Unauthorized");
+  }
+}
 
 function extractWorkerNameFromNotes(notes?: string | null): string | null {
   if (!notes) return null;
@@ -236,8 +244,8 @@ export async function updateItemStatus(
 
     revalidatePath("/dashboard/production");
     revalidatePath("/dashboard/transactions");
-    revalidateTag("production-page-data");
-    revalidateTag("transactions-page-data");
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.transactions);
     return { success: true };
   } catch (error) {
     console.error("Error updating item status:", error);
@@ -327,8 +335,8 @@ export async function bulkUpdateItemStatus(
 
     revalidatePath("/dashboard/production");
     revalidatePath("/dashboard/transactions");
-    revalidateTag("production-page-data");
-    revalidateTag("transactions-page-data");
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.transactions);
 
     if (updated === 0) {
       return { success: false, error: "Tidak ada item yang berhasil diupdate" };
@@ -461,6 +469,7 @@ export async function bulkAssignWorkerByCurrentStatus(
 }
 
 export async function getEmployees() {
+  await requireAuth();
   const employees = await prisma.employee.findMany({
     where: { rowStatus: true },
     include: { employeeType: true },
@@ -474,6 +483,7 @@ export async function getEmployees() {
 }
 
 export async function getProductionLogs(transactionItemId: number) {
+  await requireAuth();
   const logs = await prisma.productionLog.findMany({
     where: { transactionItemId },
     include: {
@@ -587,6 +597,7 @@ export async function reassignWorker(
 }
 
 export async function getBonData(transactionItemId: number) {
+  await requireAuth();
   const transactionItem = await prisma.transactionItem.findUnique({
     where: { id: transactionItemId },
     include: {
