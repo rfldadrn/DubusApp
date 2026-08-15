@@ -88,6 +88,7 @@ export function CashBookClient() {
     description: "",
     amount: "",
     walletId: "",
+    transactionId: "",
   });
 
   const loadData = useCallback(async () => {
@@ -133,11 +134,12 @@ export function CashBookClient() {
         description: form.description,
         amount: parseFloat(form.amount),
         walletId: parseInt(form.walletId),
+        transactionId: form.transactionId ? parseInt(form.transactionId) : undefined,
       });
       if (result.success) {
         toast.success("Entri berhasil ditambahkan");
         setShowAddDialog(false);
-        setForm({ entryDate: new Date().toISOString().split("T")[0], type: "Debit", category: "", description: "", amount: "", walletId: "" });
+        setForm({ entryDate: new Date().toISOString().split("T")[0], type: "Debit", category: "", description: "", amount: "", walletId: "", transactionId: "" });
         loadData();
       } else { toast.error(result.error!); }
     } catch { toast.error("Gagal"); }
@@ -166,6 +168,7 @@ export function CashBookClient() {
       description: entry.description,
       amount: String(entry.amount),
       walletId: String(entry.walletId),
+      transactionId: "",
     });
   };
 
@@ -188,7 +191,7 @@ export function CashBookClient() {
       if (result.success) {
         toast.success("Entri berhasil diupdate");
         setEditEntry(null);
-        setForm({ entryDate: new Date().toISOString().split("T")[0], type: "Debit", category: "", description: "", amount: "", walletId: "" });
+        setForm({ entryDate: new Date().toISOString().split("T")[0], type: "Debit", category: "", description: "", amount: "", walletId: "", transactionId: "" });
         loadData();
       } else { toast.error(result.error!); }
     } catch { toast.error("Gagal"); }
@@ -404,6 +407,15 @@ export function CashBookClient() {
               <Label>Deskripsi</Label>
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Keterangan transaksi..." />
             </div>
+            <div>
+              <Label>ID Transaksi (Opsional)</Label>
+              <Input
+                type="number"
+                value={form.transactionId}
+                onChange={(e) => setForm({ ...form, transactionId: e.target.value })}
+                placeholder="Contoh: 123"
+              />
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Jumlah (Rp)</Label>
@@ -428,7 +440,7 @@ export function CashBookClient() {
       </Dialog>
 
       {/* Edit Entry Dialog */}
-      <Dialog open={!!editEntry} onOpenChange={(v) => { if (!v) { setEditEntry(null); setForm({ entryDate: new Date().toISOString().split("T")[0], type: "Debit", category: "", description: "", amount: "", walletId: "" }); } }}>
+      <Dialog open={!!editEntry} onOpenChange={(v) => { if (!v) { setEditEntry(null); setForm({ entryDate: new Date().toISOString().split("T")[0], type: "Debit", category: "", description: "", amount: "", walletId: "", transactionId: "" }); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Entri Buku Kas</DialogTitle>

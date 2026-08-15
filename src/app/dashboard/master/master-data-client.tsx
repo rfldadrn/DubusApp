@@ -37,7 +37,12 @@ export function MasterDataClient({ items, statusItems, statusTransactions, payme
   const [editForm, setEditForm] = useState<any>({});
 
   const openEdit = (type: MasterDataType, data: any) => {
-    setEditForm({ ...data, customerPrice: data.customerPrice ? Number(data.customerPrice) : "", employeePrice: data.employeePrice ? Number(data.employeePrice) : "" });
+    setEditForm({
+      ...data,
+      customerPrice: data.customerPrice ? Number(data.customerPrice) : "",
+      employeePrice: data.employeePrice ? Number(data.employeePrice) : "",
+      cutterPrice: data.cutterPrice ? Number(data.cutterPrice) : "",
+    });
     setEditDialog({ type, data });
   };
 
@@ -49,6 +54,7 @@ export function MasterDataClient({ items, statusItems, statusTransactions, payme
       if (editDialog.type === "item") {
         payload.customerPrice = parseFloat(payload.customerPrice);
         payload.employeePrice = parseFloat(payload.employeePrice);
+        payload.cutterPrice = parseFloat(payload.cutterPrice || payload.employeePrice);
       }
       if (editDialog.type === "statusItem") {
         payload.sequence = parseInt(payload.sequence);
@@ -156,7 +162,8 @@ export function MasterDataClient({ items, statusItems, statusTransactions, payme
                   <TableHead>Nama</TableHead>
                   <TableHead>Kategori</TableHead>
                   <TableHead className="text-right">Harga Customer</TableHead>
-                  <TableHead className="text-right">Harga Employee</TableHead>
+                  <TableHead className="text-right">Upah Jahit</TableHead>
+                  <TableHead className="text-right">Upah Potong</TableHead>
                   <TableHead className="text-center">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -168,6 +175,7 @@ export function MasterDataClient({ items, statusItems, statusTransactions, payme
                     <TableCell><Badge variant="outline">{item.category}</Badge></TableCell>
                     <TableCell className="text-right">Rp {Number(item.customerPrice).toLocaleString("id-ID")}</TableCell>
                     <TableCell className="text-right">Rp {Number(item.employeePrice).toLocaleString("id-ID")}</TableCell>
+                    <TableCell className="text-right">Rp {Number(item.cutterPrice ?? item.employeePrice).toLocaleString("id-ID")}</TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center gap-1">
                         <Button variant="ghost" size="sm" onClick={() => openSizeDialog(item.id, item.name)} title="Kelola Ukuran">
@@ -321,7 +329,8 @@ export function MasterDataClient({ items, statusItems, statusTransactions, payme
                   </Select>
                 </div>
                 <div><Label>Harga Customer</Label><Input type="number" value={editForm.customerPrice || ""} onChange={(e) => setEditForm({ ...editForm, customerPrice: e.target.value })} /></div>
-                <div><Label>Harga Employee</Label><Input type="number" value={editForm.employeePrice || ""} onChange={(e) => setEditForm({ ...editForm, employeePrice: e.target.value })} /></div>
+                <div><Label>Upah Jahit</Label><Input type="number" value={editForm.employeePrice || ""} onChange={(e) => setEditForm({ ...editForm, employeePrice: e.target.value })} /></div>
+                <div><Label>Upah Potong</Label><Input type="number" value={editForm.cutterPrice || ""} onChange={(e) => setEditForm({ ...editForm, cutterPrice: e.target.value })} /></div>
               </div>
             )}
             {editDialog?.type === "statusItem" && (

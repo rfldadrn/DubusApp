@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Pencil, ShoppingCart } from "lucide-react";
+import { CustomerSizeManager } from "./customer-size-manager";
 
 async function getCustomer(id: string) {
   const customer = await prisma.customer.findUnique({
@@ -38,9 +39,43 @@ async function getCustomer(id: string) {
   return customer;
 }
 
+async function getActiveItems() {
+  return prisma.item.findMany({
+    where: { rowStatus: true },
+    select: {
+      id: true,
+      name: true,
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+}
+
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const customer = await getCustomer(id);
+  const [customer, items] = await Promise.all([getCustomer(id), getActiveItems()]);
+
+  const sizeHeaders = customer.sizeHeaders.map((header) => ({
+    id: header.id,
+    itemId: header.itemId,
+    note: header.note,
+    createdAt: header.createdAt.toISOString(),
+    item: {
+      id: header.item.id,
+      name: header.item.name,
+    },
+    itemSizeCustomers: header.itemSizeCustomers.map((detail) => ({
+      id: detail.id,
+      itemSizeId: detail.itemSizeId,
+      size: Number(detail.size),
+      itemSize: {
+        id: detail.itemSize.id,
+        name: detail.itemSize.name,
+        isMandatory: detail.itemSize.isMandatory,
+      },
+    })),
+  }));
 
   return (
     <div className="space-y-6">
@@ -140,28 +175,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <CardTitle>Data Ukuran</CardTitle>
         </CardHeader>
         <CardContent>
-          {customer.sizeHeaders.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">Belum ada data ukuran</p>
-          ) : (
-            <div className="space-y-4">
-              {customer.sizeHeaders.map((header) => (
-                <div key={header.id} className="p-4 rounded-lg border">
-                  <h4 className="font-medium mb-2">{header.item.name}</h4>
-                  {header.note && (
-                    <p className="text-sm text-muted-foreground mb-2">{header.note}</p>
-                  )}
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                    {header.itemSizeCustomers.map((detail) => (
-                      <div key={detail.id}>
-                        <span className="text-muted-foreground">{detail.itemSize.name}:</span>{" "}
-                        <span className="font-medium">{Number(detail.size)} cm</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <CustomerSizeManager customerId={customer.id} items={items} sizeHeaders={sizeHeaders} />
         </CardContent>
       </Card>
     </div>

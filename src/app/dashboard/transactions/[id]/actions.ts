@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { CACHE_TAGS, transactionDetailTag } from "@/lib/cache-tags";
+import { writeAuditLog } from "@/lib/audit";
 
 /**
  * Pickup items - mark selected items as "DIAMBIL" (picked up)
@@ -139,11 +140,24 @@ export async function pickupItems(data: {
           entryDate: transaction.transactionDate,
           type: "Debit",
           category: "Pembayaran Pelanggan",
-          description: `Pembayaran ${transaction.transactionCode}`,
+          description: `[TRX:${transaction.id}] Pembayaran ${transaction.transactionCode}`,
           amount: paymentAmount,
           walletId: data.payment.walletId,
           paymentId: createdPayment.id,
           createdBy: userId,
+        },
+      });
+
+      await writeAuditLog({
+        userId,
+        action: "CREATE_PICKUP_PAYMENT",
+        tableName: "payments",
+        recordId: createdPayment.id,
+        newValues: {
+          transactionId: data.transactionId,
+          amount: paymentAmount,
+          walletId: data.payment.walletId,
+          paymentTypeId: data.payment.paymentTypeId,
         },
       });
     }
@@ -221,6 +235,7 @@ export async function cancelTransaction(data: {
   try {
     const session = await auth();
     if (!session?.user?.id) return { success: false, error: "Unauthorized" };
+    const userId = Number(session.user.id);
 
     if (!data.reason || data.reason.trim().length < 3) {
       return { success: false, error: "Alasan pembatalan harus diisi (min 3 karakter)" };
@@ -257,19 +272,44 @@ export async function cancelTransaction(data: {
       return { success: false, error: "Status BTL tidak ditemukan" };
     }
 
-    // Update transaction status
-    await prisma.transaction.update({
-      where: { id: data.transactionId },
-      data: {
-        statusTransactionId: btlStatus.id,
-        note: `${transaction.note ? transaction.note + " | " : ""}DIBATALKAN: ${data.reason}`,
-      },
-    });
+    await prisma.$transaction(async (tx) => {
+      // Update transaction status
+      await tx.transaction.update({
+        where: { id: data.transactionId },
+        data: {
+          statusTransactionId: btlStatus.id,
+          paymentStatus: "Unpaid",
+          note: `${transaction.note ? transaction.note + " | " : ""}DIBATALKAN: ${data.reason}`,
+          completionDate: null,
+        },
+      });
 
-    // Soft-delete all items
-    await prisma.transactionItem.updateMany({
-      where: { transactionId: data.transactionId },
-      data: { rowStatus: false },
+      // Soft-delete all items
+      await tx.transactionItem.updateMany({
+        where: { transactionId: data.transactionId },
+        data: { rowStatus: false },
+      });
+
+      const paidPayments = transaction.payments.filter((payment) => Number(payment.amount) > 0);
+      const paidPerWallet = new Map<number, number>();
+      for (const payment of paidPayments) {
+        const existingAmount = paidPerWallet.get(payment.walletId) || 0;
+        paidPerWallet.set(payment.walletId, existingAmount + Number(payment.amount));
+      }
+
+      for (const [walletId, amount] of paidPerWallet.entries()) {
+        await tx.cashLedger.create({
+          data: {
+            entryDate: new Date(),
+            type: "Credit",
+            category: "Pembatalan Transaksi",
+            description: `[TRX:${transaction.id}] Reversal pembayaran ${transaction.transactionCode}`,
+            amount,
+            walletId,
+            createdBy: userId,
+          },
+        });
+      }
     });
 
     // If there are payments, note it (refund is manual)
@@ -277,6 +317,23 @@ export async function cancelTransaction(data: {
       (sum, p) => sum + Number(p.amount),
       0
     );
+
+    await writeAuditLog({
+      userId,
+      action: "CANCEL_TRANSACTION",
+      tableName: "transactions",
+      recordId: data.transactionId,
+      oldValues: {
+        statusTransactionId: transaction.statusTransactionId,
+        paymentStatus: transaction.paymentStatus,
+        totalPaid,
+      },
+      newValues: {
+        statusTransactionId: btlStatus.id,
+        paymentStatus: "Unpaid",
+        reason: data.reason,
+      },
+    });
 
     revalidatePath(`/dashboard/transactions/${data.transactionId}`);
     revalidatePath("/dashboard/transactions");

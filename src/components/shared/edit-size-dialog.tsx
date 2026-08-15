@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,54 +26,66 @@ type SizeValue = {
   size: string;
 };
 
-type AddSizeDialogProps = {
+type EditSizeDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  customerId: number;
-  itemId: number;
+  headerSizeCustomerId: number;
   itemName: string;
   itemSizes: ItemSize[];
-  onSuccess: (created: { id: number; label: string }) => void;
+  initialNote?: string;
+  initialValues: Array<{ itemSizeId: number; size: number }>;
+  onSuccess: () => void;
 };
 
-export function AddSizeDialog({
+export function EditSizeDialog({
   open,
   onOpenChange,
-  customerId,
-  itemId,
+  headerSizeCustomerId,
   itemName,
   itemSizes,
+  initialNote,
+  initialValues,
   onSuccess,
-}: AddSizeDialogProps) {
+}: EditSizeDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(initialNote || "");
   const [sizeValues, setSizeValues] = useState<SizeValue[]>([]);
 
+  const initialMap = useMemo(() => {
+    return new Map<number, string>(
+      initialValues.map((initialValue) => [initialValue.itemSizeId, String(initialValue.size)])
+    );
+  }, [initialValues]);
+
   useEffect(() => {
-    if (open && itemSizes.length > 0) {
-      setSizeValues(
-        itemSizes.map((itemSize) => ({
-          itemSizeId: itemSize.id,
-          size: "",
-        }))
-      );
-    }
-  }, [open, itemSizes]);
+    if (!open) return;
+
+    setNote(initialNote || "");
+    setSizeValues(
+      itemSizes.map((itemSize) => ({
+        itemSizeId: itemSize.id,
+        size: initialMap.get(itemSize.id) || "",
+      }))
+    );
+  }, [open, itemSizes, initialMap, initialNote]);
 
   const updateSizeValue = (itemSizeId: number, value: string) => {
     setSizeValues((prev) =>
-      prev.map((sv) => (sv.itemSizeId === itemSizeId ? { ...sv, size: value } : sv))
+      prev.map((sizeValue) =>
+        sizeValue.itemSizeId === itemSizeId ? { ...sizeValue, size: value } : sizeValue
+      )
     );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validation: mandatory sizes must be filled
-    const mandatorySizes = itemSizes.filter((is) => is.isMandatory);
+    const mandatorySizes = itemSizes.filter((itemSize) => itemSize.isMandatory);
     const filledMandatorySizes = sizeValues.filter(
-      (sv) => mandatorySizes.some((ms) => ms.id === sv.itemSizeId) && sv.size.trim() !== ""
+      (sizeValue) =>
+        mandatorySizes.some((mandatorySize) => mandatorySize.id === sizeValue.itemSizeId) &&
+        sizeValue.size.trim() !== ""
     );
 
     if (filledMandatorySizes.length < mandatorySizes.length) {
@@ -88,18 +100,17 @@ export function AddSizeDialog({
     setLoading(true);
 
     try {
-      const response = await fetch("/api/sizes/create", {
+      const response = await fetch("/api/sizes/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId,
-          itemId,
+          headerSizeCustomerId,
           note,
           sizeValues: sizeValues
-            .filter((sv) => sv.size.trim() !== "")
-            .map((sv) => ({
-              itemSizeId: sv.itemSizeId,
-              size: parseFloat(sv.size),
+            .filter((sizeValue) => sizeValue.size.trim() !== "")
+            .map((sizeValue) => ({
+              itemSizeId: sizeValue.itemSizeId,
+              size: parseFloat(sizeValue.size),
             })),
         }),
       });
@@ -109,20 +120,18 @@ export function AddSizeDialog({
       if (result.success) {
         toast({
           title: "Berhasil",
-          description: "Ukuran berhasil ditambahkan",
+          description: "Ukuran berhasil diperbarui",
         });
-        onSuccess(result.data);
+        onSuccess();
         onOpenChange(false);
-        setNote("");
-        setSizeValues([]);
       } else {
         toast({
           title: "Error",
-          description: result.error || "Gagal menambahkan ukuran",
+          description: result.error || "Gagal memperbarui ukuran",
           variant: "destructive",
         });
       }
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Terjadi kesalahan saat menyimpan ukuran",
@@ -137,23 +146,23 @@ export function AddSizeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Tambah Ukuran Baru</DialogTitle>
+          <DialogTitle>Edit Ukuran</DialogTitle>
           <DialogDescription>
-            Tambahkan ukuran untuk item <strong>{itemName}</strong>
+            Perbarui ukuran untuk item <strong>{itemName}</strong>
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {itemSizes.map((itemSize) => (
             <div key={itemSize.id}>
-              <Label htmlFor={`size-${itemSize.id}`}>
+              <Label htmlFor={`edit-size-${itemSize.id}`}>
                 {itemSize.name} {itemSize.isMandatory && <span className="text-red-500">*</span>}
               </Label>
               <Input
-                id={`size-${itemSize.id}`}
+                id={`edit-size-${itemSize.id}`}
                 type="number"
                 step="0.01"
-                value={sizeValues.find((sv) => sv.itemSizeId === itemSize.id)?.size || ""}
+                value={sizeValues.find((sizeValue) => sizeValue.itemSizeId === itemSize.id)?.size || ""}
                 onChange={(e) => updateSizeValue(itemSize.id, e.target.value)}
                 placeholder="cm"
                 required={itemSize.isMandatory}
@@ -162,9 +171,9 @@ export function AddSizeDialog({
           ))}
 
           <div>
-            <Label htmlFor="note">Catatan (Opsional)</Label>
+            <Label htmlFor="edit-note">Catatan (Opsional)</Label>
             <Textarea
-              id="note"
+              id="edit-note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="Catatan tambahan untuk ukuran ini"
@@ -182,7 +191,7 @@ export function AddSizeDialog({
               Batal
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Menyimpan..." : "Simpan Ukuran"}
+              {loading ? "Menyimpan..." : "Simpan Perubahan"}
             </Button>
           </DialogFooter>
         </form>

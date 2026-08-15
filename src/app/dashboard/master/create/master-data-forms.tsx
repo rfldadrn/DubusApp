@@ -27,6 +27,7 @@ export function MasterDataForms() {
     genderTarget: "Unisex",
     customerPrice: "",
     employeePrice: "",
+    cutterPrice: "",
   });
 
   // Status Item form state
@@ -59,6 +60,7 @@ export function MasterDataForms() {
         ...itemForm,
         customerPrice: parseFloat(itemForm.customerPrice),
         employeePrice: parseFloat(itemForm.employeePrice),
+        cutterPrice: parseFloat(itemForm.cutterPrice || itemForm.employeePrice),
       });
 
       if (result.success) {
@@ -221,6 +223,16 @@ export function MasterDataForms() {
                     onChange={(e) => setItemForm({ ...itemForm, employeePrice: e.target.value })}
                     placeholder="40000"
                     required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="item-cutter-price">Upah Potong</Label>
+                  <Input
+                    id="item-cutter-price"
+                    type="number"
+                    value={itemForm.cutterPrice}
+                    onChange={(e) => setItemForm({ ...itemForm, cutterPrice: e.target.value })}
+                    placeholder="Kosong = sama dengan upah jahit"
                   />
                 </div>
               </div>

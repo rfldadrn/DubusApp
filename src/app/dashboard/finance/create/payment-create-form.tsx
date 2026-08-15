@@ -18,12 +18,15 @@ export function PaymentCreateForm({ formData }: { formData: any }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [transactionId, setTransactionId] = useState("");
+  const [withoutTransaction, setWithoutTransaction] = useState(false);
   const [amount, setAmount] = useState("");
   const [paymentTypeId, setPaymentTypeId] = useState(formData.paymentTypes[0]?.id.toString() || "");
   const [walletId, setWalletId] = useState(formData.wallets[0]?.id.toString() || "");
   const [note, setNote] = useState("");
 
   useEffect(() => {
+    if (withoutTransaction) return;
+
     const txId = searchParams.get("transactionId");
     if (!txId) return;
 
@@ -31,9 +34,14 @@ export function PaymentCreateForm({ formData }: { formData: any }) {
     if (exists) {
       setTransactionId(txId);
     }
-  }, [formData.transactions, searchParams]);
+  }, [formData.transactions, searchParams, withoutTransaction]);
 
   useEffect(() => {
+    if (withoutTransaction) {
+      setAmount("");
+      return;
+    }
+
     if (transactionId) {
       const transaction = formData.transactions.find((t: any) => t.id === Number(transactionId));
       if (transaction) {
@@ -47,23 +55,37 @@ export function PaymentCreateForm({ formData }: { formData: any }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!transactionId || !amount) {
-      toast({ title: "Error", description: "Transaksi dan jumlah wajib diisi", variant: "destructive" });
+    if (!amount) {
+      toast({ title: "Error", description: "Jumlah wajib diisi", variant: "destructive" });
+      return;
+    }
+
+    if (!withoutTransaction && !transactionId) {
+      toast({ title: "Error", description: "Pilih transaksi atau centang pemasukan non-transaksi", variant: "destructive" });
+      return;
+    }
+
+    if (withoutTransaction && !note.trim()) {
+      toast({ title: "Error", description: "Catatan wajib diisi untuk pemasukan non-transaksi", variant: "destructive" });
       return;
     }
 
     setLoading(true);
     try {
       const result = await createPayment({
-        transactionId: Number(transactionId),
+        transactionId: withoutTransaction ? undefined : Number(transactionId),
         amount: Number(amount),
         paymentTypeId: Number(paymentTypeId),
         walletId: Number(walletId),
         note,
+        entryDate: new Date().toISOString(),
       });
 
       if (result.success) {
-        toast({ title: "Berhasil", description: "Pembayaran berhasil dicatat" });
+        toast({
+          title: "Berhasil",
+          description: withoutTransaction ? "Pemasukan non-transaksi berhasil dicatat" : "Pembayaran berhasil dicatat",
+        });
         router.push("/dashboard/finance");
         router.refresh();
       } else {
@@ -80,18 +102,42 @@ export function PaymentCreateForm({ formData }: { formData: any }) {
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="md:col-span-2">
-          <Label>Transaksi *</Label>
-          <SearchableSelect
-            value={transactionId}
-            onValueChange={setTransactionId}
-            options={formData.transactions.map((t: any) => ({
-              value: t.id.toString(),
-              label: `${t.transactionCode} - ${t.customer.name} (Rp ${Number(t.totalAmount).toLocaleString("id-ID")})`
-            }))}
-            placeholder="Pilih Transaksi"
-            searchPlaceholder="Cari transaksi..."
-          />
+          <label className="inline-flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={withoutTransaction}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setWithoutTransaction(checked);
+                if (checked) {
+                  setTransactionId("");
+                  setAmount("");
+                }
+              }}
+            />
+            Pemasukan tanpa transaksi
+          </label>
         </div>
+
+        {!withoutTransaction && (
+          <div className="md:col-span-2">
+            <Label>Transaksi *</Label>
+            <SearchableSelect
+              value={transactionId}
+              onValueChange={setTransactionId}
+              options={formData.transactions.map((t: any) => {
+                const paid = t.payments?.reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0;
+                const remaining = Math.max(0, Number(t.totalAmount) - paid);
+                return {
+                  value: t.id.toString(),
+                  label: `${t.transactionCode} - ${t.customer.name} (Sisa Rp ${remaining.toLocaleString("id-ID")})`,
+                };
+              })}
+              placeholder="Pilih Transaksi"
+              searchPlaceholder="Cari transaksi..."
+            />
+          </div>
+        )}
 
         <div>
           <Label>Jumlah Bayar (Rp) *</Label>
@@ -130,9 +176,13 @@ export function PaymentCreateForm({ formData }: { formData: any }) {
           </Select>
         </div>
 
-        <div>
+        <div className={withoutTransaction ? "md:col-span-2" : ""}>
           <Label>Catatan</Label>
-          <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Catatan (opsional)" />
+          <Textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={withoutTransaction ? "Wajib diisi untuk pemasukan non-transaksi" : "Catatan (opsional)"}
+          />
         </div>
       </div>
 

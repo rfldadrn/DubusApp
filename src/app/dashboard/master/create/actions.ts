@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { writeAuditLog } from "@/lib/audit";
 
 type MasterDataType = "item" | "statusItem" | "paymentType" | "employeeType";
 
@@ -15,7 +16,7 @@ export async function createMasterData(type: MasterDataType, data: any) {
 
     switch (type) {
       case "item":
-        await prisma.item.create({
+        const createdItem = await prisma.item.create({
           data: {
             code: data.code,
             name: data.name,
@@ -24,6 +25,30 @@ export async function createMasterData(type: MasterDataType, data: any) {
             customerPrice: data.customerPrice,
             employeePrice: data.employeePrice,
             rowStatus: true,
+          },
+        });
+
+        try {
+          await prisma.$executeRawUnsafe(
+            `UPDATE "items" SET "cutterPrice" = $1 WHERE id = $2`,
+            Number(data.cutterPrice ?? data.employeePrice ?? 0),
+            createdItem.id
+          );
+        } catch {
+          // Ignore when column has not been migrated yet.
+        }
+
+        await writeAuditLog({
+          userId: Number(session.user.id),
+          action: "CREATE_ITEM",
+          tableName: "items",
+          recordId: createdItem.id,
+          newValues: {
+            code: data.code,
+            name: data.name,
+            customerPrice: data.customerPrice,
+            employeePrice: data.employeePrice,
+            cutterPrice: Number(data.cutterPrice ?? data.employeePrice ?? 0),
           },
         });
         break;
@@ -89,6 +114,30 @@ export async function updateMasterData(type: MasterDataType, id: number, data: a
             genderTarget: data.genderTarget,
             customerPrice: data.customerPrice,
             employeePrice: data.employeePrice,
+          },
+        });
+
+        try {
+          await prisma.$executeRawUnsafe(
+            `UPDATE "items" SET "cutterPrice" = $1 WHERE id = $2`,
+            Number(data.cutterPrice ?? data.employeePrice ?? 0),
+            id
+          );
+        } catch {
+          // Ignore when column has not been migrated yet.
+        }
+
+        await writeAuditLog({
+          userId: Number(session.user.id),
+          action: "UPDATE_ITEM",
+          tableName: "items",
+          recordId: id,
+          newValues: {
+            code: data.code,
+            name: data.name,
+            customerPrice: data.customerPrice,
+            employeePrice: data.employeePrice,
+            cutterPrice: Number(data.cutterPrice ?? data.employeePrice ?? 0),
           },
         });
         break;

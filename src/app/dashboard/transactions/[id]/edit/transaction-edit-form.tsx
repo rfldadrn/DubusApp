@@ -256,7 +256,7 @@ export function TransactionEditForm({
     }
 
     const requestPromise = (async () => {
-      const response = await fetch(`/api/sizes/list?customerId=${custId}&itemId=${itmId}`, { cache: "force-cache" });
+      const response = await fetch(`/api/sizes/list?customerId=${custId}&itemId=${itmId}`, { cache: "no-store" });
       const result = await response.json();
       if (!result.success) return [] as SizeOption[];
       return result.data as SizeOption[];
@@ -332,10 +332,22 @@ export function TransactionEditForm({
     }
   };
 
-  const handleSizeAdded = () => {
-    if (currentSizeItem && customerId) {
-      fetchAvailableSizes(Number(customerId), currentSizeItem.itemId, true);
-    }
+  const handleSizeAdded = (created: { id: number; label: string }) => {
+    if (!currentSizeItem || !customerId) return;
+
+    setItems((prevItems) => {
+      const next = [...prevItems];
+      const target = next[currentSizeItem.index];
+      if (target) {
+        next[currentSizeItem.index] = {
+          ...target,
+          headerSizeCustomerId: created.id,
+        };
+      }
+      return next;
+    });
+
+    fetchAvailableSizes(Number(customerId), currentSizeItem.itemId, true);
   };
 
   // Fetch sizes when customer changes

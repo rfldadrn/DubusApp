@@ -5,10 +5,15 @@ import { PaymentCreateForm } from "./payment-create-form";
 async function getFormData() {
   const [transactionsRaw, paymentTypes, walletsRaw] = await Promise.all([
     prisma.transaction.findMany({
-      where: { rowStatus: true, paymentStatus: { not: "Paid" } },
+      where: {
+        rowStatus: true,
+        paymentStatus: { not: "Paid" },
+        statusTransaction: { code: { not: "BTL" } },
+      },
       include: { 
         customer: true,
-        payments: true 
+        payments: true,
+        statusTransaction: true,
       },
       orderBy: { createdAt: "desc" },
     }),

@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { writeAuditLog } from "@/lib/audit";
 
 export async function getCashLedgerEntries(filters?: {
   period?: "daily" | "weekly" | "monthly" | "yearly";
@@ -118,20 +119,54 @@ export async function createCashLedgerEntry(data: {
   description: string;
   amount: number;
   walletId: number;
+  transactionId?: number;
 }) {
   try {
     const session = await auth();
     if (!session?.user?.id) return { success: false, error: "Unauthorized" };
 
-    await prisma.cashLedger.create({
+    const userId = parseInt(session.user.id);
+    let description = data.description;
+
+    if (data.transactionId && Number.isFinite(Number(data.transactionId))) {
+      const trx = await prisma.transaction.findUnique({
+        where: { id: Number(data.transactionId) },
+        include: { statusTransaction: true },
+      });
+
+      if (!trx) {
+        return { success: false, error: "Transaksi tidak ditemukan" };
+      }
+      if (trx.statusTransaction.code === "BTL") {
+        return { success: false, error: "Transaksi dibatalkan, tidak bisa direferensikan" };
+      }
+
+      description = `[TRX:${trx.id}] ${description}`;
+    }
+
+    const created = await prisma.cashLedger.create({
       data: {
         entryDate: new Date(data.entryDate),
         type: data.type,
         category: data.category,
-        description: data.description,
+        description,
         amount: data.amount,
         walletId: data.walletId,
-        createdBy: parseInt(session.user.id),
+        createdBy: userId,
+      },
+    });
+
+    await writeAuditLog({
+      userId,
+      action: "CREATE_CASH_LEDGER",
+      tableName: "cash_ledger",
+      recordId: created.id,
+      newValues: {
+        type: data.type,
+        category: data.category,
+        description,
+        amount: data.amount,
+        walletId: data.walletId,
       },
     });
 
@@ -157,6 +192,20 @@ export async function deleteCashLedgerEntry(id: number) {
     }
 
     await prisma.cashLedger.delete({ where: { id } });
+
+    await writeAuditLog({
+      userId: Number(session.user.id),
+      action: "DELETE_CASH_LEDGER",
+      tableName: "cash_ledger",
+      recordId: id,
+      oldValues: {
+        type: entry.type,
+        category: entry.category,
+        description: entry.description,
+        amount: Number(entry.amount),
+        walletId: entry.walletId,
+      },
+    });
 
     revalidatePath("/dashboard/finance/cashbook");
     return { success: true };
@@ -189,6 +238,29 @@ export async function updateCashLedgerEntry(id: number, data: {
       where: { id },
       data: {
         entryDate: new Date(data.entryDate),
+        type: data.type,
+        category: data.category,
+        description: data.description,
+        amount: data.amount,
+        walletId: data.walletId,
+      },
+    });
+
+    await writeAuditLog({
+      userId: Number(session.user.id),
+      action: "UPDATE_CASH_LEDGER",
+      tableName: "cash_ledger",
+      recordId: id,
+      oldValues: {
+        entryDate: entry.entryDate,
+        type: entry.type,
+        category: entry.category,
+        description: entry.description,
+        amount: Number(entry.amount),
+        walletId: entry.walletId,
+      },
+      newValues: {
+        entryDate: data.entryDate,
         type: data.type,
         category: data.category,
         description: data.description,
@@ -324,6 +396,7 @@ export async function getTransactionRevenueForPeriod(date?: string, period?: str
     where: {
       transaction: {
         transactionDate: { gte: startDate, lt: endDate },
+        statusTransaction: { code: { not: "BTL" } },
       },
     },
     include: {

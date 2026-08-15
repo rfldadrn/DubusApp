@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { CACHE_TAGS } from "@/lib/cache-tags";
+import { writeAuditLog } from "@/lib/audit";
 
 interface StatusUpdateExtra {
   notes?: string;
@@ -32,6 +33,22 @@ function extractWorkerNameFromNotes(notes?: string | null): string | null {
   if (assigned?.[1]) return assigned[1].trim();
 
   return null;
+}
+
+async function resolveWorkerUpah(itemId: number, statusCode: string, fallbackUpah: number) {
+  if (statusCode !== "POTONG") return fallbackUpah;
+
+  try {
+    const rows = await prisma.$queryRawUnsafe<Array<{ cutter_upah: number | null }>>(
+      `SELECT COALESCE("cutterPrice", "employeePrice")::numeric AS cutter_upah FROM "items" WHERE id = $1 LIMIT 1`,
+      itemId
+    );
+    const cutUpah = Number(rows[0]?.cutter_upah ?? fallbackUpah);
+    return Number.isFinite(cutUpah) ? cutUpah : fallbackUpah;
+  } catch {
+    // Fallback for environments where cutterPrice column has not been migrated yet.
+    return fallbackUpah;
+  }
 }
 
 export async function updateItemStatus(
@@ -122,6 +139,20 @@ export async function updateItemStatus(
       data: updateData,
     });
 
+    await writeAuditLog({
+      userId,
+      action: "UPDATE_STATUS",
+      tableName: "transaction_items",
+      recordId: transactionItemId,
+      oldValues: {
+        statusItemId: currentItem.statusItemId,
+      },
+      newValues: {
+        statusItemId,
+        assignedTailorId: updateData.assignedTailorId || null,
+      },
+    });
+
     let productionLogNotes = extra.notes || `Status updated to ${newStatus.name}`;
 
     // If assignment status, persist assignee name in the log so history is immutable.
@@ -160,7 +191,10 @@ export async function updateItemStatus(
           include: { item: true },
         });
 
-        const upah = transactionItem ? Number(transactionItem.item.employeePrice) : 0;
+        const baseUpah = transactionItem ? Number(transactionItem.item.employeePrice) : 0;
+        const upah = transactionItem
+          ? await resolveWorkerUpah(transactionItem.itemId, newStatus.code, baseUpah)
+          : baseUpah;
         const role = newStatus.code === "POTONG" ? "Cutter" : "Tailor";
 
         // Check if workerLog already exists for this item and role
@@ -176,16 +210,38 @@ export async function updateItemStatus(
           if (existingLog.employeeId !== extra.employeeId) {
             await prisma.workerLog.update({
               where: { id: existingLog.id },
-              data: { employeeId: extra.employeeId },
+              data: { employeeId: extra.employeeId, upah },
+            });
+
+            await writeAuditLog({
+              userId,
+              action: "REASSIGN_WORKER",
+              tableName: "worker_logs",
+              recordId: existingLog.id,
+              oldValues: { employeeId: existingLog.employeeId, upah: Number(existingLog.upah) },
+              newValues: { employeeId: extra.employeeId, upah },
             });
           }
         } else {
           // Create new log
-          await prisma.workerLog.create({
+          const createdWorkerLog = await prisma.workerLog.create({
             data: {
               transactionItemId,
               employeeId: extra.employeeId,
               role: role as any,
+              upah,
+            },
+          });
+
+          await writeAuditLog({
+            userId,
+            action: "CREATE_WORKER_LOG",
+            tableName: "worker_logs",
+            recordId: createdWorkerLog.id,
+            newValues: {
+              transactionItemId,
+              employeeId: extra.employeeId,
+              role,
               upah,
             },
           });

@@ -6,6 +6,11 @@ import { FinanceTable } from "./finance-table";
 async function getFinanceData() {
   const [payments, transactions] = await Promise.all([
     prisma.payment.findMany({
+      where: {
+        transaction: {
+          statusTransaction: { code: { not: "BTL" } },
+        },
+      },
       include: {
         transaction: { include: { customer: true } },
         paymentType: true,
@@ -13,13 +18,24 @@ async function getFinanceData() {
       },
       orderBy: { paidAt: "desc" },
     }),
-    prisma.transaction.findMany({ where: { rowStatus: true } }),
+    prisma.transaction.findMany({
+      where: {
+        rowStatus: true,
+        statusTransaction: { code: { not: "BTL" } },
+      },
+      include: {
+        payments: true,
+      },
+    }),
   ]);
 
   const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount), 0);
   const totalOutstanding = transactions
     .filter((t) => t.paymentStatus !== "Paid")
-    .reduce((sum, t) => sum + Number(t.totalAmount), 0);
+    .reduce((sum, t) => {
+      const paid = t.payments.reduce((acc, payment) => acc + Number(payment.amount), 0);
+      return sum + Math.max(0, Number(t.totalAmount) - paid);
+    }, 0);
   const paidTransactions = transactions.filter((t) => t.paymentStatus === "Paid").length;
 
   const paymentRows = payments.map((p) => ({

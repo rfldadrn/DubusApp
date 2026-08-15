@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { CACHE_TAGS } from "@/lib/cache-tags";
+import { writeAuditLog } from "@/lib/audit";
 
 type ItemChargeInput = {
   label: string;
@@ -311,7 +312,7 @@ export async function createTransaction(data: TransactionInput) {
             entryDate: transaction.transactionDate,
             type: "Debit",
             category: "Pembayaran Pelanggan",
-            description: `Pembayaran ${transaction.transactionCode}`,
+            description: `[TRX:${transaction.id}] Pembayaran ${transaction.transactionCode}`,
             amount: data.payment.amount,
             walletId: data.payment.walletId,
             paymentId: payment.id,
@@ -330,7 +331,7 @@ export async function createTransaction(data: TransactionInput) {
             entryDate: transaction.transactionDate,
             type: "Debit",
             category: "Pembayaran Pelanggan",
-            description: `Pembayaran ${transaction.transactionCode}`,
+            description: `[TRX:${transaction.id}] Pembayaran ${transaction.transactionCode}`,
             amount: data.payment.amount,
             walletId: data.payment.walletId,
             paymentId: payment.id,
@@ -338,6 +339,19 @@ export async function createTransaction(data: TransactionInput) {
           },
         });
       }
+
+      await writeAuditLog({
+        userId: Number(session.user.id),
+        action: "CREATE_TRANSACTION_PAYMENT",
+        tableName: "payments",
+        recordId: payment.id,
+        newValues: {
+          transactionId: transaction.id,
+          amount: data.payment.amount,
+          walletId: data.payment.walletId,
+          paymentTypeId: data.payment.paymentTypeId,
+        },
+      });
     }
 
     // Fetch complete transaction data for invoice
