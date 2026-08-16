@@ -99,6 +99,8 @@ async function main() {
     { id: 11, menuName: "Agency", menuUrl: "/dashboard/agency", menuIcon: "Building2", menuSlug: "agency", isMenu: true, orderNo: 6, parentId: 0 },
     { id: 12, menuName: "Pengantaran", menuUrl: "/dashboard/delivery", menuIcon: "Truck", menuSlug: "delivery", isMenu: true, orderNo: 10, parentId: 0 },
     { id: 13, menuName: "Design Pakaian", menuUrl: "/dashboard/master/clothing-designs", menuIcon: "Shirt", menuSlug: "clothing-designs", isMenu: true, orderNo: 1, parentId: 6 },
+    { id: 14, menuName: "Company Catalog", menuUrl: "/dashboard/master/company-catalog", menuIcon: "BookOpen", menuSlug: "company-catalog", isMenu: true, orderNo: 2, parentId: 6 },
+    { id: 15, menuName: "Dokumen Perusahaan", menuUrl: "/dashboard/master/company-documents", menuIcon: "FileText", menuSlug: "company-documents", isMenu: true, orderNo: 3, parentId: 6 },
   ];
 
   for (const menu of menus) {
@@ -115,16 +117,16 @@ async function main() {
   // Clear existing mappings
   await prisma.roleMenuMapping.deleteMany({});
 
-  // SuperAdmin: all menus (1-13)
+  // SuperAdmin: all menus (1-15)
   let mappingId = 1;
-  for (let i = 1; i <= 13; i++) {
+  for (let i = 1; i <= 15; i++) {
     await prisma.roleMenuMapping.create({
       data: { id: mappingId++, roleId: 1, menuId: i },
     });
   }
 
   // Administrator: Dashboard, Transaksi, Pelanggan, Produksi, Keuangan, Laporan, Kas, Payroll, Agency, Delivery, Design Pakaian
-  const adminMenus = [1, 2, 3, 4, 5, 7, 9, 10, 11, 12, 13];
+  const adminMenus = [1, 2, 3, 4, 5, 7, 9, 10, 11, 12, 13, 14, 15];
   for (const menuId of adminMenus) {
     await prisma.roleMenuMapping.create({
       data: { id: mappingId++, roleId: 2, menuId },

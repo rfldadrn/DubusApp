@@ -362,6 +362,7 @@ export async function createTransaction(data: TransactionInput) {
       include: {
         customer: true,
         items: {
+          orderBy: { id: "asc" },
           include: {
             item: true,
             fabric: true,
@@ -386,6 +387,7 @@ export async function createTransaction(data: TransactionInput) {
         transactionDate: transaction.transactionDate.toLocaleDateString("id-ID"),
         completionDate: transaction.completionDate?.toLocaleDateString("id-ID"),
         items: completeTransaction?.items.map((item) => ({
+          transactionItemId: item.id,
           itemName: item.item.name,
           sewingPrice: Number(item.sewingPrice),
           fabricPrice: item.fabricPrice ? Number(item.fabricPrice) : undefined,

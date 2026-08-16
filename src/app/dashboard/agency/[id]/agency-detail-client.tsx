@@ -14,6 +14,7 @@ import { Users, Search, Ruler, ArrowRight, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { getItemsForMeasurement, getAgencyProjects, createMeasurementTransaction, addAgencyEmployee } from "./actions";
 import { LoadingOverlay } from "@/components/shared/loading-overlay";
+import { AttachmentManager } from "@/components/shared/attachment-manager";
 
 type Customer = {
   id: number;
@@ -28,6 +29,14 @@ type Agency = {
   id: number;
   name: string;
   agencyCode: string;
+  attachments: Array<{
+    id: string;
+    originalName: string;
+    description: string | null;
+    mimeType: string;
+    size: number;
+    createdAt: string;
+  }>;
   customers: Customer[];
   projects: any[];
   projectSummaries?: Array<{
@@ -286,6 +295,23 @@ export function AgencyDetailClient({ agency }: { agency: Agency }) {
 
   return (
     <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Dokumen Agency</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AttachmentManager
+            title="File Agency"
+            bucket="DOCUMENTS"
+            entityType="AGENCY"
+            entityId={String(agency.id)}
+            initialAttachments={agency.attachments}
+            accept="application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            maxSizeLabel="20MB"
+          />
+        </CardContent>
+      </Card>
+
       {agency.projectSummaries && agency.projectSummaries.length > 0 && (
         <Card>
           <CardHeader>

@@ -5,6 +5,37 @@
 - Collection: `DubusApp-Full-API.postman_collection.json`
 - Scope: auth/login flow, public API, protected session API, internal token API, dan cron token API.
 
+## Storage API Collection
+
+- Collection: `DubusApp-Storage-API.postman_collection.json`
+- Environment: `DubusApp-Storage-API.postman_environment.json`
+- Scope: Company Catalog API, Attachment upload, signed URL, dan delete file memakai Bearer token.
+
+### Variables to Fill (Storage API)
+
+- `baseUrl` (default: `http://localhost:3000`)
+- `username` dan `password` untuk request `00.1 - Login Get Bearer Token`
+- `apiBearerToken` akan terisi otomatis setelah login. Alternatif: isi manual dari `DUBUS_API_BEARER_TOKEN` di `.env`.
+- `agencyId` untuk test dokumen agency
+- `transactionId` dan `transactionItemId` untuk test contoh model transaksi
+
+### Storage API Test Order
+
+1. `00.1 - Login Get Bearer Token` untuk mengisi `apiBearerToken` otomatis.
+2. `01.1 - Company Catalog List Authorized`
+3. `01.2 - Unauthorized Without Bearer`
+4. `02.1 - Create Catalog (Multipart + Image)` lalu pilih file image manual di field `file`
+5. `02.3 - Get Catalog Detail + Signed URL`
+6. `03.1 - Upload Company Document` atau `03.2 - Upload Agency Document`, pilih file manual di field `file`
+7. `03.4 - Get Attachment Signed URL`
+8. `03.5 - Delete Attachment` jika ingin membersihkan file test
+
+### Storage MIME Limits
+
+- `transactions`: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`, maksimal 10MB.
+- `documents`: `application/pdf`, `image/jpeg`, `image/png`, `image/webp`, `xlsx`, `docx`, maksimal 20MB.
+- `company_catalog`: `image/jpeg`, `image/png`, `image/webp`, `image/svg+xml`, maksimal 5MB.
+
 ### Quick Run Order (Full API)
 
 1. `01.1 - Get CSRF Token`

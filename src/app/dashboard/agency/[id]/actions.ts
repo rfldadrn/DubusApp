@@ -46,6 +46,11 @@ export async function getAgencyDetail(agencyId: number) {
 
   if (!agency) return null;
 
+  const attachments = await prisma.attachment.findMany({
+    where: { bucket: "DOCUMENTS", entityType: "AGENCY", entityId: String(agency.id) },
+    orderBy: { createdAt: "desc" },
+  });
+
   const projectIds = agency.projects.map((project) => project.id);
   const customerIds = agency.customers.map((customer) => customer.id);
 
@@ -138,6 +143,14 @@ export async function getAgencyDetail(agencyId: number) {
     agencyCode: agency.agencyCode,
     name: agency.name,
     description: agency.description,
+    attachments: attachments.map((attachment) => ({
+      id: attachment.id,
+      originalName: attachment.originalName,
+      description: attachment.description,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+      createdAt: attachment.createdAt.toISOString(),
+    })),
     projects: agency.projects.map((project) => ({
       id: project.id,
       projectCode: project.projectCode,

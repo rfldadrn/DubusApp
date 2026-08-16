@@ -47,6 +47,8 @@ type TransactionItem = {
   modelDescription?: string;
   designId?: number;
   useDefaultDesign?: boolean;
+  needsModelAttachment?: boolean;
+  modelAttachmentFile?: File | null;
   headerSizeCustomerId?: number;
   charges: ItemCharge[];
 };
@@ -70,6 +72,8 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
       targetDate: "",
       designId: undefined,
       useDefaultDesign: false,
+      needsModelAttachment: false,
+      modelAttachmentFile: null,
       charges: [],
     },
   ]);
@@ -133,6 +137,8 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
         targetDate: "",
         designId: undefined,
         useDefaultDesign: false,
+        needsModelAttachment: false,
+        modelAttachmentFile: null,
         charges: [],
       },
     ]);
@@ -394,6 +400,15 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
       return;
     }
 
+    if (items.some((item) => item.needsModelAttachment && !item.modelAttachmentFile)) {
+      toast({
+        title: "Error",
+        description: "Pilih file contoh model untuk item yang membutuhkan upload",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const dpAmount = Number(downPayment) || 0;
     const totalAmount = calculateGrandTotal();
     
@@ -455,6 +470,40 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
       });
 
       if (result.success) {
+        if (!result.data) throw new Error("Data transaksi tidak tersedia");
+        const transactionResult = result.data;
+        const uploadTargets = items
+          .map((item, index) => ({ item, transactionItemId: transactionResult.items[index]?.transactionItemId }))
+          .filter(({ item, transactionItemId }) => item.needsModelAttachment && item.modelAttachmentFile && transactionItemId);
+
+        if (uploadTargets.length > 0) {
+          const uploads = await Promise.allSettled(
+            uploadTargets.map(({ item, transactionItemId }) => {
+              const formData = new FormData();
+              formData.append("file", item.modelAttachmentFile as File);
+              formData.append("bucket", "TRANSACTIONS");
+              formData.append("entityType", "TRANSACTION_ITEM");
+              formData.append("entityId", String(transactionItemId));
+              formData.append("transactionId", String(transactionResult.id));
+              formData.append("description", item.modelDescription || "Contoh model pelanggan");
+              return fetch("/api/attachments/upload", { method: "POST", body: formData }).then(async (response) => {
+                const body = await response.json();
+                if (!response.ok || !body.success) throw new Error(body.error || "Upload contoh model gagal");
+                return body;
+              });
+            })
+          );
+
+          const failedCount = uploads.filter((upload) => upload.status === "rejected").length;
+          if (failedCount > 0) {
+            toast({
+              title: "Transaksi tersimpan",
+              description: `${failedCount} file contoh model gagal diupload. File bisa ditambahkan ulang dari attachment item nanti.`,
+              variant: "destructive",
+            });
+          }
+        }
+
         toast({
           title: "Berhasil",
           description: "Transaksi berhasil dibuat",
@@ -746,6 +795,38 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
                   placeholder="Deskripsi model jahitan (opsional)"
                   rows={2}
                 />
+              </div>
+
+              <div className="md:col-span-2 rounded-md border border-muted p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    id={`model-attachment-${index}`}
+                    type="checkbox"
+                    checked={!!item.needsModelAttachment}
+                    onChange={(e) => {
+                      updateItem(index, "needsModelAttachment", e.target.checked);
+                      if (!e.target.checked) updateItem(index, "modelAttachmentFile", null);
+                    }}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <Label htmlFor={`model-attachment-${index}`} className="cursor-pointer">
+                    Butuh upload contoh model dari pelanggan
+                  </Label>
+                </div>
+
+                {item.needsModelAttachment && (
+                  <div>
+                    <Label>File Contoh Model *</Label>
+                    <Input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      onChange={(e) => updateItem(index, "modelAttachmentFile", e.target.files?.[0] || null)}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      JPEG, PNG, WEBP, atau PDF. Maksimal 10MB. File tersimpan ke bucket transactions setelah transaksi dibuat.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="md:col-span-2">

@@ -1,0 +1,451 @@
+{
+  "info": {
+    "name": "DubusApp Storage API",
+    "description": "Test collection untuk Company Catalog dan Attachment Storage API. Semua endpoint memakai Authorization: Bearer {{apiBearerToken}}.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "4c4a2f1f-6a14-44d1-8e69-0c7677e1d3c0"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{apiBearerToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "00 - Auth Token",
+      "item": [
+        {
+          "name": "00.1 - Login Get Bearer Token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/auth/token",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "auth", "token"]
+            },
+            "description": "Login API memakai username/password aplikasi. Response accessToken otomatis disimpan ke environment variable apiBearerToken."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Token response success', function () { pm.expect(body.success).to.eql(true); });",
+                  "pm.test('Access token exists', function () { pm.expect(body.data && body.data.accessToken).to.be.a('string').and.not.empty; });",
+                  "if (body.success && body.data && body.data.accessToken) {",
+                  "  pm.environment.set('apiBearerToken', body.data.accessToken);",
+                  "  pm.environment.set('apiTokenExpiresIn', String(body.data.expiresIn || ''));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Health / Auth Guard",
+      "item": [
+        {
+          "name": "01.1 - Company Catalog List Authorized",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/company-catalog?includeInactive=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "company-catalog"],
+              "query": [
+                { "key": "includeInactive", "value": "true" }
+              ]
+            },
+            "description": "Verifikasi Bearer token valid. Expected 200."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response success true', function () { pm.expect(pm.response.json().success).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "01.2 - Unauthorized Without Bearer",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/company-catalog",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "company-catalog"]
+            },
+            "description": "Verifikasi endpoint menolak request tanpa Bearer/session. Expected 401 jika tidak ada session cookie Postman."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401 or 200 when session cookie exists', function () { pm.expect([200, 401]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Company Catalog",
+      "item": [
+        {
+          "name": "02.1 - Create Catalog (Multipart + Image)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "name", "value": "{{catalogName}}", "type": "text" },
+                { "key": "description", "value": "{{catalogDescription}}", "type": "text" },
+                { "key": "price", "value": "{{catalogPrice}}", "type": "text" },
+                { "key": "sortOrder", "value": "{{catalogSortOrder}}", "type": "text" },
+                { "key": "rowStatus", "value": "true", "type": "text" },
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/company-catalog",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "company-catalog"]
+            },
+            "description": "Pilih file image/jpeg, image/png, image/webp, atau image/svg+xml manual di field file. Maks 5MB. Response akan menyimpan catalogId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Create success', function () { pm.expect(body.success).to.eql(true); });",
+                  "if (body.success && body.data && body.data.id) { pm.environment.set('catalogId', body.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.2 - List Catalogs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/company-catalog?includeInactive=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "company-catalog"],
+              "query": [
+                { "key": "includeInactive", "value": "true" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response success true', function () { pm.expect(pm.response.json().success).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.3 - Get Catalog Detail + Signed URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/company-catalog/{{catalogId}}?signedUrl=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "company-catalog", "{{catalogId}}"],
+              "query": [
+                { "key": "signedUrl", "value": "true" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Detail success', function () { pm.expect(body.success).to.eql(true); });",
+                  "if (body.data && body.data.signedUrl) { pm.environment.set('catalogSignedUrl', body.data.signedUrl); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.4 - Update Catalog (JSON No Image)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{catalogName}} Updated\",\n  \"description\": \"Updated via Postman\",\n  \"price\": {{catalogPrice}},\n  \"sortOrder\": {{catalogSortOrder}},\n  \"rowStatus\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/company-catalog/{{catalogId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "company-catalog", "{{catalogId}}"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Update success', function () { pm.expect(pm.response.json().success).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02.5 - Soft Delete Catalog",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/company-catalog/{{catalogId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "company-catalog", "{{catalogId}}"]
+            },
+            "description": "Soft delete: rowStatus menjadi false, file storage tidak dihapus."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Delete success', function () { pm.expect(pm.response.json().success).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Attachments",
+      "item": [
+        {
+          "name": "03.1 - Upload Company Document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "bucket", "value": "DOCUMENTS", "type": "text" },
+                { "key": "entityType", "value": "COMPANY", "type": "text" },
+                { "key": "entityId", "value": "company", "type": "text" },
+                { "key": "description", "value": "{{companyDocumentDescription}}", "type": "text" },
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attachments/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "attachments", "upload"]
+            },
+            "description": "Pilih PDF/JPG/PNG/WEBP/XLSX/DOCX. Maks 20MB. Response menyimpan attachmentId."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Upload success', function () { pm.expect(body.success).to.eql(true); });",
+                  "if (body.success && body.data && body.data.id) { pm.environment.set('attachmentId', body.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.2 - Upload Agency Document",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "bucket", "value": "DOCUMENTS", "type": "text" },
+                { "key": "entityType", "value": "AGENCY", "type": "text" },
+                { "key": "entityId", "value": "{{agencyId}}", "type": "text" },
+                { "key": "description", "value": "{{agencyDocumentDescription}}", "type": "text" },
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attachments/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "attachments", "upload"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Upload success', function () { pm.expect(body.success).to.eql(true); });",
+                  "if (body.success && body.data && body.data.id) { pm.environment.set('attachmentId', body.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.3 - Upload Transaction Item Model",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "bucket", "value": "TRANSACTIONS", "type": "text" },
+                { "key": "entityType", "value": "TRANSACTION_ITEM", "type": "text" },
+                { "key": "entityId", "value": "{{transactionItemId}}", "type": "text" },
+                { "key": "transactionId", "value": "{{transactionId}}", "type": "text" },
+                { "key": "description", "value": "{{transactionModelDescription}}", "type": "text" },
+                { "key": "file", "type": "file", "src": [] }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/attachments/upload",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "attachments", "upload"]
+            },
+            "description": "Pilih JPG/PNG/WEBP/PDF. Maks 10MB. Path bucket: year/transactionId/items/transactionItemId/model/file."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Upload success', function () { pm.expect(body.success).to.eql(true); });",
+                  "if (body.success && body.data && body.data.id) { pm.environment.set('attachmentId', body.data.id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.4 - Get Attachment Signed URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/attachments/{{attachmentId}}/signed-url",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "attachments", "{{attachmentId}}", "signed-url"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Signed URL success', function () { pm.expect(body.success).to.eql(true); });",
+                  "if (body.data && body.data.signedUrl) { pm.environment.set('attachmentSignedUrl', body.data.signedUrl); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03.5 - Delete Attachment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/attachments/{{attachmentId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "attachments", "{{attachmentId}}"]
+            },
+            "description": "Menghapus row attachment dan mencoba menghapus file storage."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Delete success', function () { pm.expect(pm.response.json().success).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "apiBearerToken", "value": "" },
+    { "key": "catalogId", "value": "" },
+    { "key": "attachmentId", "value": "" },
+    { "key": "agencyId", "value": "1" },
+    { "key": "transactionId", "value": "1" },
+    { "key": "transactionItemId", "value": "1" }
+  ]
+}

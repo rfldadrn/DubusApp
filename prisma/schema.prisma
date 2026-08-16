@@ -104,6 +104,7 @@ model User {
   deliveriesHandled     Delivery[]
   sizeHeadersCreated    HeaderSizeCustomer[]
   ironingLogsHandled    IroningLog[]
+  attachmentsUploaded   Attachment[]         @relation("AttachmentUploadedBy")
   paymentsReceived      Payment[]
   payrollsProcessed     Payroll[]            @relation("PayrollPaidBy")
   productionLogsUpdated ProductionLog[]
@@ -558,6 +559,27 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model Attachment {
+  id             String               @id @default(uuid())
+  bucket         StorageBucket
+  path           String               @db.VarChar(500)
+  originalName   String               @db.VarChar(255)
+  description    String?              @db.VarChar(500)
+  mimeType       String               @db.VarChar(100)
+  size           Int
+  entityType     AttachmentEntityType
+  entityId       String               @db.VarChar(50)
+  uploadedBy     Int?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  uploadedByUser User?                @relation("AttachmentUploadedBy", fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([bucket, path])
+  @@index([createdAt])
+  @@map("attachments")
+}
+
 model clothing_designs {
   id                                            Int               @id @default(autoincrement())
   code                                          String            @unique @db.VarChar(50)
@@ -576,6 +598,22 @@ model clothing_designs {
   transaction_items                             TransactionItem[]
 
   @@index([rowStatus, itemId])
+}
+
+model CompanyCatalog {
+  id          Int           @id @default(autoincrement())
+  name        String        @db.VarChar(150)
+  description String?       @db.VarChar(500)
+  price       Decimal?      @db.Decimal(18, 2)
+  imageBucket StorageBucket @default(COMPANY_CATALOG)
+  imagePath   String?       @db.VarChar(500)
+  sortOrder   Int           @default(0)
+  rowStatus   Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([rowStatus, sortOrder])
+  @@map("company_catalogs")
 }
 
 enum Gender {
@@ -638,6 +676,23 @@ enum AgencyStatus {
 enum WorkerRole {
   Tailor
   Cutter
+}
+
+enum StorageBucket {
+  TRANSACTIONS    @map("transactions")
+  DOCUMENTS       @map("documents")
+  COMPANY_CATALOG @map("company_catalog")
+}
+
+enum AttachmentEntityType {
+  TRANSACTION
+  TRANSACTION_ITEM
+  AGENCY
+  AGENCY_PROJECT
+  DELIVERY
+  PRODUCTION
+  CUSTOMER
+  COMPANY
 }
 
 enum CashEntryType {
