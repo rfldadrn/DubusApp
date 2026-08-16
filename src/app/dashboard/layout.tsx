@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { Sidebar } from "@/components/shared/sidebar";
 import { SessionActivityTracker } from "@/components/shared/session-activity-tracker";
 import { prisma } from "@/lib/prisma";
@@ -26,6 +27,37 @@ function getRoleMenus(roleId: number) {
   )();
 }
 
+function normalizePath(path: string): string {
+  if (!path) return "/";
+  if (path.length > 1 && path.endsWith("/")) {
+    return path.slice(0, -1);
+  }
+  return path;
+}
+
+function hasMenuAccess(pathname: string, allowedHrefs: string[]): boolean {
+  const currentPath = normalizePath(pathname);
+
+  // Always allow dashboard home for authenticated users.
+  if (currentPath === "/dashboard") {
+    return true;
+  }
+
+  return allowedHrefs.some((href) => {
+    const allowedPath = normalizePath(href);
+    if (currentPath === allowedPath) {
+      return true;
+    }
+
+    // Prevent /dashboard permission from granting all nested routes.
+    if (allowedPath === "/dashboard") {
+      return false;
+    }
+
+    return currentPath.startsWith(`${allowedPath}/`);
+  });
+}
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -38,9 +70,19 @@ export default async function DashboardLayout({
   }
 
   const userRoleId = (session.user as any).roleId as number;
+  const headerStore = await headers();
+  const currentPathname = headerStore.get("x-pathname") || "/dashboard";
 
   // Fetch allowed menus for this role
   const roleMenus = await getRoleMenus(userRoleId);
+
+  const allowedHrefs = roleMenus
+    .filter((rm) => rm.menu.rowStatus && rm.menu.isMenu && !!rm.menu.menuUrl)
+    .map((rm) => rm.menu.menuUrl as string);
+
+  if (!hasMenuAccess(currentPathname, allowedHrefs)) {
+    redirect("/dashboard");
+  }
 
   // Filter active menus - include both leaf menus and parent menus that have children
   const allMenus = roleMenus

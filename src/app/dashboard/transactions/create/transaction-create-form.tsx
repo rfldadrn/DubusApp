@@ -394,7 +394,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
         customerId: Number(customerId),
         transactionDate: new Date(transactionDate),
         completionDate: targetDate ? new Date(targetDate) : undefined,
-        statusTransactionId: Number(statusTransactionId),
+        statusTransactionId: statusTransactionId ? Number(statusTransactionId) : 1,
         note,
         items: items.map((item) => ({
           itemId: item.itemId,
@@ -483,6 +483,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
           />
         </div>
 
+        {/* 
         <div>
           <Label htmlFor="statusTransactionId">Status Transaksi *</Label>
           <Select value={statusTransactionId} onValueChange={setStatusTransactionId}>
@@ -498,6 +499,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
             </SelectContent>
           </Select>
         </div>
+        */}
       </div>
 
       <div>

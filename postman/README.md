@@ -1,5 +1,26 @@
 # Postman Guide - DubusApp Backup Cron
 
+## Full API Collection
+
+- Collection: `DubusApp-Full-API.postman_collection.json`
+- Scope: auth/login flow, public API, protected session API, internal token API, dan cron token API.
+
+### Quick Run Order (Full API)
+
+1. `01.1 - Get CSRF Token`
+2. `01.2 - Login Credentials (Callback)`
+3. `01.3 - Get Session`
+4. Lanjut test folder `03 - Protected API (Session)`
+
+### Variables to Fill (Full API)
+
+- `baseUrl` (default: `http://localhost:3000`)
+- `username`
+- `password`
+- `rbacInternalToken` (isi `RBAC_INTERNAL_TOKEN` atau secret internal yang dipakai app)
+- `cronSecret` (isi `CRON_SECRET`)
+- Data IDs untuk test: `customerId`, `itemId`, `itemSizeId1`, `headerSizeCustomerId`, `roleId`
+
 ## Files
 
 - Collection: `DubusApp-Backup-Cron.postman_collection.json`

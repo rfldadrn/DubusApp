@@ -206,16 +206,29 @@ const getDashboardData = unstable_cache(async () => {
   };
 }, [CACHE_TAGS.dashboard], { revalidate: 30, tags: [CACHE_TAGS.dashboard] });
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ error?: string }>;
+}) {
   const session = await auth();
   const data = await getDashboardData();
+  const params = await searchParams;
+  const isAccessDenied = params?.error === "access-denied";
 
   return (
-    <DashboardClient
-      data={{
-        ...data,
-        userName: (session?.user as any)?.name || "User",
-      }}
-    />
+    <>
+      {isAccessDenied && (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          Menu access not allowed.
+        </div>
+      )}
+      <DashboardClient
+        data={{
+          ...data,
+          userName: (session?.user as any)?.name || "User",
+        }}
+      />
+    </>
   );
 }
