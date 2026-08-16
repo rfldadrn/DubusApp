@@ -20,6 +20,7 @@ type TransactionItemInput = {
   fabricPrice?: number;
   fabricMeters?: number;
   sewingPrice: number;
+  targetDate?: Date;
   modelDescription?: string;
   designId?: number;
   useDefaultDesign?: boolean;
@@ -213,6 +214,7 @@ export async function createTransaction(data: TransactionInput) {
           fabricId: item.fabricSource === "Store" ? item.fabricId : null,
           fabricPrice: item.fabricPrice || null,
           fabricMeters: item.fabricMeters || null,
+          targetDate: item.targetDate || data.completionDate || null,
           modelDescription: item.modelDescription,
           sewingPrice: item.sewingPrice,
           designId: item.designId,
@@ -373,6 +375,7 @@ export async function createTransaction(data: TransactionInput) {
     revalidatePath("/dashboard/production");
     revalidateTag(CACHE_TAGS.transactions);
     revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.dashboard);
     return { 
       success: true, 
       data: {

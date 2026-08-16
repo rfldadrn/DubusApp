@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { differenceInDays } from "date-fns";
+import { differenceInDays, startOfDay } from "date-fns";
 import { DashboardClient } from "./dashboard-client";
 import { Prisma } from "@prisma/client";
 import { unstable_cache } from "next/cache";
@@ -8,8 +8,17 @@ import { CACHE_TAGS } from "@/lib/cache-tags";
 
 const getDashboardData = unstable_cache(async () => {
   const now = new Date();
+  const today = startOfDay(now);
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const completedStatuses = await prisma.statusItem.findMany({
+    where: {
+      rowStatus: true,
+      code: { in: ["OK", "DIAMBIL"] },
+    },
+    select: { id: true },
+  });
+  const completedStatusIds = completedStatuses.map((status) => status.id);
 
   const [
     totalTransactions,
@@ -32,7 +41,7 @@ const getDashboardData = unstable_cache(async () => {
     prisma.transactionItem.count({
       where: {
         rowStatus: true,
-        statusItem: { code: { notIn: ["OK", "DIAMBIL"] } },
+        statusItemId: { notIn: completedStatusIds },
       },
     }),
     prisma.transaction.findMany({
@@ -62,7 +71,7 @@ const getDashboardData = unstable_cache(async () => {
       where: {
         rowStatus: true,
         targetDate: { not: null },
-        statusItem: { code: { notIn: ["OK", "DIAMBIL"] } },
+        statusItemId: { notIn: completedStatusIds },
       },
       select: {
         id: true,
@@ -97,7 +106,7 @@ const getDashboardData = unstable_cache(async () => {
       by: ["statusItemId"],
       where: {
         rowStatus: true,
-        statusItem: { code: { notIn: ["OK", "DIAMBIL"] } },
+        statusItemId: { notIn: completedStatusIds },
       },
       _count: { _all: true },
     }),
@@ -177,7 +186,7 @@ const getDashboardData = unstable_cache(async () => {
       customerName: ti.transaction.customer.name,
       itemName: ti.item.name,
       targetDate: ti.targetDate!.toISOString(),
-      daysLeft: differenceInDays(new Date(ti.targetDate!), now),
+      daysLeft: differenceInDays(startOfDay(new Date(ti.targetDate!)), today),
       statusName: ti.statusItem?.name || "",
       statusColor: ti.statusItem?.colorSlug || "gray",
     }))

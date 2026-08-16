@@ -42,6 +42,8 @@ type TransactionItem = {
   fabricPrice?: number;
   fabricMeters?: number;
   sewingPrice: number;
+  isPriority?: boolean;
+  targetDate?: string;
   modelDescription?: string;
   designId?: number;
   useDefaultDesign?: boolean;
@@ -60,7 +62,16 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   const [targetDate, setTargetDate] = useState("");
   const [note, setNote] = useState("");
   const [items, setItems] = useState<TransactionItem[]>([
-    { itemId: 0, fabricSource: "Customer", sewingPrice: 0, designId: undefined, useDefaultDesign: false, charges: [] },
+    {
+      itemId: 0,
+      fabricSource: "Customer",
+      sewingPrice: 0,
+      isPriority: false,
+      targetDate: "",
+      designId: undefined,
+      useDefaultDesign: false,
+      charges: [],
+    },
   ]);
 
   // Payment states
@@ -112,7 +123,19 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   );
 
   const addItem = () => {
-    setItems([...items, { itemId: 0, fabricSource: "Customer", sewingPrice: 0, designId: undefined, useDefaultDesign: false, charges: [] }]);
+    setItems([
+      ...items,
+      {
+        itemId: 0,
+        fabricSource: "Customer",
+        sewingPrice: 0,
+        isPriority: false,
+        targetDate: "",
+        designId: undefined,
+        useDefaultDesign: false,
+        charges: [],
+      },
+    ]);
   };
 
   const removeItem = (index: number) => {
@@ -362,6 +385,15 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
       return;
     }
 
+    if (items.some((item) => item.isPriority && !item.targetDate)) {
+      toast({
+        title: "Error",
+        description: "Item prioritas wajib memiliki target date",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const dpAmount = Number(downPayment) || 0;
     const totalAmount = calculateGrandTotal();
     
@@ -402,6 +434,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
           fabricPrice: item.fabricPrice,
           fabricMeters: item.fabricMeters,
           sewingPrice: item.sewingPrice,
+          targetDate: item.isPriority && item.targetDate ? new Date(item.targetDate) : undefined,
           modelDescription: item.modelDescription,
           designId: item.designId,
           useDefaultDesign: item.useDefaultDesign ?? false,
@@ -667,6 +700,43 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
                   </div>
                 </div>
               )}
+
+              <div className="md:col-span-2 rounded-md border border-muted p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    id={`priority-${index}`}
+                    type="checkbox"
+                    checked={!!item.isPriority}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      updateItem(index, "isPriority", checked);
+                      if (!checked) {
+                        updateItem(index, "targetDate", "");
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <Label htmlFor={`priority-${index}`} className="cursor-pointer">
+                    Prioritaskan item ini (target date khusus)
+                  </Label>
+                </div>
+
+                {item.isPriority && (
+                  <div className="max-w-xs">
+                    <Label>Target Date Item *</Label>
+                    <Input
+                      type="date"
+                      value={item.targetDate || ""}
+                      onChange={(e) => updateItem(index, "targetDate", e.target.value)}
+                      min={transactionDate}
+                      required={!!item.isPriority}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Jika prioritas aktif, reminder akan pakai tanggal ini. Jika tidak, ikut target date transaksi.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <div className="md:col-span-2">
                 <Label>Deskripsi Model</Label>

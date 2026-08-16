@@ -302,6 +302,7 @@ export async function updateItemStatus(
     revalidatePath("/dashboard/transactions");
     revalidateTag(CACHE_TAGS.production);
     revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.dashboard);
     return { success: true };
   } catch (error) {
     console.error("Error updating item status:", error);
@@ -393,6 +394,7 @@ export async function bulkUpdateItemStatus(
     revalidatePath("/dashboard/transactions");
     revalidateTag(CACHE_TAGS.production);
     revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.dashboard);
 
     if (updated === 0) {
       return { success: false, error: "Tidak ada item yang berhasil diupdate" };
@@ -512,6 +514,9 @@ export async function bulkAssignWorkerByCurrentStatus(
 
     revalidatePath("/dashboard/production");
     revalidatePath("/dashboard/transactions");
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.dashboard);
 
     return {
       success: true,
@@ -645,6 +650,10 @@ export async function reassignWorker(
     }
 
     revalidatePath("/dashboard/production");
+    revalidatePath("/dashboard/transactions");
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.dashboard);
     return { success: true };
   } catch (error) {
     console.error("Error reassigning worker:", error);

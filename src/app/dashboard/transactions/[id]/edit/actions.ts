@@ -2,7 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { CACHE_TAGS, transactionDetailTag } from "@/lib/cache-tags";
 
 type ItemChargeInput = {
   id?: number;
@@ -207,6 +208,11 @@ export async function updateTransaction(data: TransactionUpdateInput) {
     revalidatePath("/dashboard/transactions");
     revalidatePath(`/dashboard/transactions/${data.id}`);
     revalidatePath(`/dashboard/transactions/${data.id}/edit`);
+    revalidatePath("/dashboard/production");
+    revalidateTag(transactionDetailTag(data.id));
+    revalidateTag(CACHE_TAGS.transactions);
+    revalidateTag(CACHE_TAGS.production);
+    revalidateTag(CACHE_TAGS.dashboard);
     
     return { success: true, data: { id: data.id } };
   } catch (error) {

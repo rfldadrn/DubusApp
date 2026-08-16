@@ -381,6 +381,7 @@ model TransactionItem {
 
   @@index([rowStatus, statusItemId], map: "idx_transaction_items_rowstatus_statusitemid")
   @@index([targetDate], map: "idx_transaction_items_targetdate")
+  @@index([rowStatus, targetDate], map: "idx_transaction_items_rowstatus_targetdate")
   @@index([transactionId], map: "idx_transaction_items_transactionid")
   @@index([transactionId, rowStatus])
   @@map("transaction_items")

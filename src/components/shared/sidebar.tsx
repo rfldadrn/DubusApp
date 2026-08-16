@@ -178,7 +178,7 @@ export function Sidebar({ menus }: SidebarProps) {
   return (
     <div className="flex flex-col h-full bg-card border-r">
       <div className="p-6 border-b">
-        <h2 className="text-2xl font-bold text-primary">Toko Jahit</h2>
+        <h2 className="text-2xl font-bold text-primary">Dunia Busana</h2>
         <p className="text-sm text-muted-foreground">Management System</p>
       </div>
 

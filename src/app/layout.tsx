@@ -8,7 +8,7 @@ import { AppSessionProvider } from "@/components/shared/session-provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Toko Jahit App",
+  title: "Dunia Busana App",
   description: "Sistem Manajemen Toko Jahit Modern",
 };
 
