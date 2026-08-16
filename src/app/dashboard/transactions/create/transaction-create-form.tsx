@@ -58,7 +58,6 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
   const [customerId, setCustomerId] = useState("");
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split("T")[0]);
   const [targetDate, setTargetDate] = useState("");
-  const [statusTransactionId, setStatusTransactionId] = useState(formData.statusTransactions[0]?.id.toString() || "");
   const [note, setNote] = useState("");
   const [items, setItems] = useState<TransactionItem[]>([
     { itemId: 0, fabricSource: "Customer", sewingPrice: 0, designId: undefined, useDefaultDesign: false, charges: [] },
@@ -394,7 +393,7 @@ export function TransactionCreateForm({ formData }: { formData: FormDataType }) 
         customerId: Number(customerId),
         transactionDate: new Date(transactionDate),
         completionDate: targetDate ? new Date(targetDate) : undefined,
-        statusTransactionId: statusTransactionId ? Number(statusTransactionId) : 1,
+        statusTransactionId: 1,
         note,
         items: items.map((item) => ({
           itemId: item.itemId,
